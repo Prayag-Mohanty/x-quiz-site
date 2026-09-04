@@ -29,6 +29,24 @@ createdb quizmaster && psql -d quizmaster -v ON_ERROR_STOP=1 -f migrations/001_c
 
 Each file is wrapped in `BEGIN`/`COMMIT`, so a failure leaves nothing behind.
 
+### A disposable cluster
+
+If you don't have the superuser password for an installed Postgres service — a
+`winget install` sets one unattended and never tells you — you don't need it. The
+same binaries will run a second cluster you own, with no password and no admin
+rights, on another port:
+
+```bash
+initdb -D /tmp/qm-pgdata -U postgres --auth-local=trust --auth-host=trust
+pg_ctl -D /tmp/qm-pgdata -o "-p 55432" -l /tmp/qm-pgdata/server.log start
+createdb -h 127.0.0.1 -p 55432 -U postgres quizmaster
+```
+
+Point `psql` at `-p 55432`, and `pg_ctl ... stop` plus deleting the directory
+removes every trace. This is how the schema was verified. Note that the server is
+a child of whatever shell starts it — killing that shell takes the database down
+with it.
+
 ## Testing
 
 `test/smoke.sql` checks that the schema actually enforces `FORMAT_SPEC` — one
