@@ -97,6 +97,14 @@ export interface TeamView {
     /** Everyone currently connected on this team identity. */
     present: string[];
     displayName: string;
+    /**
+     * Whether this question was posed to this team.
+     *
+     * FORMAT_SPEC §2.1: the direct team does not pounce, because the question is
+     * already theirs. Without this the client shows them a pounce box that the
+     * engine will refuse, which reads as a broken app rather than a rule.
+     */
+    isDirectTeam: boolean;
   };
 
   pounce: {

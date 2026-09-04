@@ -32,16 +32,28 @@ before(async () => {
 
 after(async () => {
   for (const socket of openSockets) socket.close();
-  // A played quiz cannot simply be deleted: quiz_action and score_event hold it
-  // with ON DELETE RESTRICT, deliberately, so a real quiz's history cannot be
-  // dropped by accident. Tests are the one place that has to undo that, and
-  // doing it explicitly is the point.
+  // Removing a played quiz means dismantling its audit trail, which the schema
+  // deliberately prevents: quiz_action and score_event hold it with ON DELETE
+  // RESTRICT, and a trigger refuses to delete ledger rows at all. Test data is
+  // the one legitimate reason to override that, so it is done explicitly and
+  // the trigger is put straight back. Without this the deletes fail silently
+  // and every run leaves another quiz behind.
+  await pool
+    .query('ALTER TABLE score_event DISABLE TRIGGER score_event_append_only')
+    .catch(() => undefined);
   for (const id of createdQuizzes) {
-    await pool.query('DELETE FROM quiz_action WHERE quiz_id = $1', [id]).catch(() => undefined);
-    await pool.query('DELETE FROM score_event WHERE quiz_id = $1', [id]).catch(() => undefined);
-    await pool.query('DELETE FROM session WHERE quiz_id = $1', [id]).catch(() => undefined);
-    await pool.query('DELETE FROM quiz WHERE id = $1', [id]).catch(() => undefined);
+    for (const sql of [
+      'DELETE FROM quiz_action WHERE quiz_id = $1',
+      'DELETE FROM score_event WHERE quiz_id = $1',
+      'DELETE FROM session WHERE quiz_id = $1',
+      'DELETE FROM quiz WHERE id = $1',
+    ]) {
+      await pool.query(sql, [id]).catch(() => undefined);
+    }
   }
+  await pool
+    .query('ALTER TABLE score_event ENABLE TRIGGER score_event_append_only')
+    .catch(() => undefined);
   evictAllRooms();
   await app.close();
   await pool.end();

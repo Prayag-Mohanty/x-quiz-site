@@ -172,6 +172,10 @@ export function buildTeamView(
       teamName: team?.name ?? 'Unknown team',
       present: ctx.presence.get(viewer.teamId) ?? [],
       displayName: viewer.displayName,
+      isDirectTeam:
+        active?.kind === 'DIRECT'
+          ? state.teams[active.directTeamIdx]?.id === viewer.teamId
+          : false,
     },
 
     pounce: {

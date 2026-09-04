@@ -7,7 +7,11 @@ export default defineConfig({
   server: {
     port: 5173,
     // Proxying keeps the browser talking to one origin, so CORS never enters
-    // the picture during development.
-    proxy: { '/api': 'http://127.0.0.1:3000' },
+    // the picture during development. /ws needs ws:true or the upgrade request
+    // is proxied as plain HTTP and the socket never opens.
+    proxy: {
+      '/api': 'http://127.0.0.1:3000',
+      '/ws': { target: 'ws://127.0.0.1:3000', ws: true },
+    },
   },
 });

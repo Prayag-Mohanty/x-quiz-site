@@ -281,11 +281,18 @@ export function markTyping(room: Room, teamId: string, author: string): void {
 }
 
 function recomputePresence(room: Room): void {
-  const presence = new Map<string, string[]>();
+  // Deduplicated by name: one person with the quiz open on a laptop and a phone,
+  // or mid-reconnect with the old socket not yet reaped, is still one person.
+  // Listing them twice makes the team look bigger than it is and reads as a bug.
+  const byTeam = new Map<string, Set<string>>();
   for (const conn of room.connections.values()) {
     if (conn.role !== 'TEAM' || !conn.teamId) continue;
-    presence.set(conn.teamId, [...(presence.get(conn.teamId) ?? []), conn.displayName]);
+    const names = byTeam.get(conn.teamId) ?? new Set<string>();
+    names.add(conn.displayName);
+    byTeam.set(conn.teamId, names);
   }
+  const presence = new Map<string, string[]>();
+  for (const [teamId, names] of byTeam) presence.set(teamId, [...names]);
   room.ctx.presence = presence;
 }
 
