@@ -13,7 +13,7 @@ Build it plain and ugly.
 - [x] Format spec written (`docs/FORMAT_SPEC.md`)
 - [x] Engine: types, rotation, scoring ledger, reducer
 - [x] Engine test suite (37 tests, all rules covered)
-- [ ] Postgres schema + migrations
+- [x] Postgres schema + migrations (`packages/db`) — written, not yet run against a live server
 - [ ] Question authoring UI: rounds, questions, parts, media upload, answers
 - [ ] Quiz setup: teams, round order, direction per round
 

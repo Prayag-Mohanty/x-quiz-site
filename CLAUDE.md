@@ -55,7 +55,9 @@ These are decided. Do not relitigate them without discussion.
 docs/FORMAT_SPEC.md      Normative quiz rules. Source of truth.
 docs/ARCHITECTURE.md     Full design: data model, media pipeline, console layout, build order.
 docs/BUILD_ORDER.md      Phased plan with what "done" means per phase.
+docs/DATA_MODEL.md       How the engine's types map onto the Postgres schema.
 packages/engine/         Pure state machine + scoring. No I/O. Start here.
+packages/db/             Postgres migrations. Content (Phase 0) + ledger (Phase 1).
 ```
 
 ---
@@ -63,7 +65,8 @@ packages/engine/         Pure state machine + scoring. No I/O. Start here.
 ## Current state
 
 Phase 0. The engine package (`packages/engine`) contains the reducer and its test suite.
-Nothing else is built yet. See `docs/BUILD_ORDER.md` for what comes next.
+`packages/db` has the Postgres schema, not yet applied to a live server. The authoring
+UI is next. See `docs/BUILD_ORDER.md`.
 
 ---
 
