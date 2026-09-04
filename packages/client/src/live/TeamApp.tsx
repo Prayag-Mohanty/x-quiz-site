@@ -108,9 +108,17 @@ function JoinForm({ onJoined }: { onJoined: (s: StoredSession) => void }) {
 
   return (
     <Centre>
-      <h1 className="mb-1 text-lg font-semibold">Join the quiz</h1>
-      <p className="mb-4 text-sm text-neutral-600">
-        Your team has one code. Everyone on the team uses it, with their own name.
+      <p className="mb-1 text-xs font-semibold uppercase tracking-widest text-neutral-400">
+        Quizmaster
+      </p>
+      <h1 className="mb-2 text-2xl font-semibold text-neutral-900">Join your team</h1>
+      <p className="mb-5 text-sm text-neutral-600">
+        This is the team screen for a live quiz. Once you are in, the questions
+        appear here as the quizmaster reads them, and this is where you pounce.
+      </p>
+      <p className="mb-4 rounded bg-neutral-100 px-3 py-2 text-sm text-neutral-600">
+        Your whole team shares one code. Everyone joins with it and adds their own
+        name, so you can see who is typing.
       </p>
       <form onSubmit={submit} className="space-y-3">
         <div>
@@ -118,7 +126,7 @@ function JoinForm({ onJoined }: { onJoined: (s: StoredSession) => void }) {
             Team code
           </label>
           <input
-            className="w-full rounded border border-neutral-300 px-3 py-2 font-mono text-lg tracking-widest uppercase"
+            className="w-full rounded border border-neutral-300 bg-white px-3 py-2 font-mono text-lg tracking-widest text-neutral-900 uppercase"
             value={code}
             onChange={(e) => setCode(e.target.value.toUpperCase())}
             placeholder="ABCD1234"
@@ -131,7 +139,7 @@ function JoinForm({ onJoined }: { onJoined: (s: StoredSession) => void }) {
             Your name
           </label>
           <input
-            className="w-full rounded border border-neutral-300 px-3 py-2"
+            className="w-full rounded border border-neutral-300 bg-white px-3 py-2 text-neutral-900"
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder="So your teammates know who is typing"
@@ -315,7 +323,7 @@ function PounceBox({ view }: { view: TeamView }) {
         +10 if right, −5 if wrong. One per team. Nobody else sees what you write.
       </p>
       <textarea
-        className="w-full rounded border border-neutral-300 px-3 py-2"
+        className="w-full rounded border border-neutral-300 bg-white px-3 py-2 text-neutral-900"
         rows={3}
         value={text}
         onChange={(e) => setText(e.target.value)}
@@ -365,7 +373,7 @@ function DraftBox({ view }: { view: TeamView }) {
         </p>
       </div>
       <textarea
-        className="w-full rounded border border-neutral-300 px-3 py-2"
+        className="w-full rounded border border-neutral-300 bg-white px-3 py-2 text-neutral-900"
         rows={3}
         value={local}
         placeholder="Work it out together here. Only your team sees this."

@@ -1,5 +1,35 @@
 @import "tailwindcss";
 
-/* Phase 0 is a tool, not a product surface. Dense, legible, unstyled beyond
-   what makes it readable. The QM console in Phase 1 is where layout matters. */
-:root { color-scheme: light dark; }
+/**
+ * This app has exactly one look, and it is light.
+ *
+ * `color-scheme: light dark` was here first, which promises a dark theme that
+ * does not exist: on a dark-mode machine the browser flips default text to
+ * white while the panels stay explicitly bg-white, so headings and anything
+ * typed into an input vanished. Declaring `light` keeps the OS out of it.
+ */
+:root {
+  color-scheme: light;
+}
+
+body {
+  background: #f5f5f5;
+  color: #171717;
+}
+
+/**
+ * Form controls do not inherit colour from the page — the browser styles them
+ * itself unless told otherwise. Setting both here means no input anywhere can
+ * end up invisible because a class was forgotten on one of them.
+ */
+input,
+textarea,
+select {
+  background-color: #ffffff;
+  color: #171717;
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: #a3a3a3;
+}
