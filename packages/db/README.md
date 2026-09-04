@@ -29,6 +29,21 @@ createdb quizmaster && psql -d quizmaster -v ON_ERROR_STOP=1 -f migrations/001_c
 
 Each file is wrapped in `BEGIN`/`COMMIT`, so a failure leaves nothing behind.
 
+## Testing
+
+`test/smoke.sql` checks that the schema actually enforces `FORMAT_SPEC` — one
+named assertion per rule, the same convention the engine's tests follow. It
+includes the worked example from §2.1 end to end: a withheld partial stays off
+the public scoreboard, appears at reveal, and the question yields 15 points.
+
+```bash
+psql -d quizmaster -v ON_ERROR_STOP=1 -f test/smoke.sql
+```
+
+It runs in a transaction and ends with `ROLLBACK`, so it is safe to run against a
+database with real quizzes in it. Success ends with `ALL TESTS PASSED`; a failure
+aborts at the first bad assertion and names the rule that broke.
+
 ## Things that will bite you
 
 - **`position` is 0-based and load-bearing.** It matches the engine's array
@@ -49,7 +64,7 @@ Each file is wrapped in `BEGIN`/`COMMIT`, so a failure leaves nothing behind.
 
 ## Status
 
-**Not yet executed against a live Postgres.** Neither a server nor Node is
-installed on the machine this was written on, so the SQL has been reviewed but not
-run. Apply it to a scratch database before trusting it, and before writing any
-code against it.
+**Not yet executed against a live Postgres.** No server is installed on the
+machine this was written on, and Docker Desktop fails to start there, so the SQL
+and its tests have been reviewed but never run. Apply the migrations to a scratch
+database and run `test/smoke.sql` before writing any code against this.
