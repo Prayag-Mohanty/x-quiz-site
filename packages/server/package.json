@@ -1,0 +1,27 @@
+{
+  "name": "@quizmaster/server",
+  "version": "0.1.0",
+  "description": "Authoring API. Owns Postgres; wraps the engine in Phase 1.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "start": "node --env-file=.env dist/index.js",
+    "dev": "tsc --watch --preserveWatchOutput",
+    "test": "tsc -p tsconfig.test.json && node --env-file=.env --test \"dist-test/test/*.test.js\""
+  },
+  "dependencies": {
+    "@quizmaster/db": "file:../db",
+    "@quizmaster/engine": "file:../engine",
+    "fastify": "^5.0.0",
+    "@fastify/cors": "^10.0.0",
+    "pg": "^8.13.0",
+    "nanoid": "^5.0.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.0",
+    "@types/node": "^22.0.0",
+    "@types/pg": "^8.11.0"
+  }
+}

@@ -63,6 +63,8 @@ docs/BUILD_ORDER.md      Phased plan with what "done" means per phase.
 docs/DATA_MODEL.md       How the engine's types map onto the Postgres schema.
 docs/GLOSSARY.md         Web terms explained for the author. You don't need it; he does.
 packages/engine/         Pure state machine + scoring. No I/O. Start here.
+packages/db/             Postgres schema, row types, row↔domain mapping.
+packages/server/         Fastify authoring API. Owns Postgres.
 ```
 
 ---
@@ -70,9 +72,10 @@ packages/engine/         Pure state machine + scoring. No I/O. Start here.
 ## Current state
 
 Phase 0. The engine package (`packages/engine`) contains the reducer and its test suite
-(37 tests, passing). The Postgres schema exists and is verified, but predates
-`docs/DECISIONS.md` and is being ported to Drizzle and folded into `packages/server` —
-see `docs/DATA_MODEL.md`. The authoring UI is next. See `docs/BUILD_ORDER.md`.
+(37 tests, passing). `packages/db` has the Postgres schema, verified on PostgreSQL 17,
+plus row types and the row-to-domain mappers — see `docs/DATA_MODEL.md`. It is raw SQL
+rather than Drizzle by explicit decision: it predates `docs/DECISIONS.md` and porting it
+was judged not worth the churn. The authoring UI is next. See `docs/BUILD_ORDER.md`.
 
 ---
 
