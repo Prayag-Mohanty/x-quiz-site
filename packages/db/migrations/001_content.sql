@@ -379,11 +379,15 @@ CREATE VIEW quiz_authoring_issue AS
    WHERE btrim(qn.answer_text) = ''
 
   UNION ALL
-  -- The engine divides questionValue by parts.length; a question with no parts
-  -- cannot be scored at all.
+  -- DIRECT only. Parts exist to drive bounce partial credit, and the engine
+  -- touches question.parts nowhere else — a connect is scored by reveal stage
+  -- and a written answer by a single verdict, so neither needs one. Without a
+  -- part, BOUNCE_PARTIAL has nothing to credit and the question cannot yield
+  -- partial marks.
   SELECT r.quiz_id, 'ERROR', 'question', qn.id, 'question has no parts (a simple question needs exactly one)'
     FROM question qn JOIN round r ON r.id = qn.round_id
-   WHERE NOT EXISTS (SELECT 1 FROM question_part p WHERE p.question_id = qn.id)
+   WHERE r.type = 'DIRECT'
+     AND NOT EXISTS (SELECT 1 FROM question_part p WHERE p.question_id = qn.id)
 
   UNION ALL
   -- FORMAT_SPEC §2.2: four questions, displayed one at a time.

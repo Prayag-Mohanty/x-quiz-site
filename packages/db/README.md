@@ -64,7 +64,8 @@ aborts at the first bad assertion and names the rule that broke.
 
 ## Status
 
-**Not yet executed against a live Postgres.** No server is installed on the
-machine this was written on, and Docker Desktop fails to start there, so the SQL
-and its tests have been reviewed but never run. Apply the migrations to a scratch
-database and run `test/smoke.sql` before writing any code against this.
+Verified on PostgreSQL 17.11: both migrations apply to an empty database and all
+31 assertions in `test/smoke.sql` pass.
+
+14 tables, 4 views, 46 check constraints, 18 foreign keys and 7 triggers. Nothing
+here has run against a database holding a real quiz yet.

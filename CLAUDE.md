@@ -65,7 +65,7 @@ packages/db/             Postgres migrations. Content (Phase 0) + ledger (Phase 
 ## Current state
 
 Phase 0. The engine package (`packages/engine`) contains the reducer and its test suite.
-`packages/db` has the Postgres schema, not yet applied to a live server. The authoring
+`packages/db` has the Postgres schema, applied and tested on PostgreSQL 17.11. The authoring
 UI is next. See `docs/BUILD_ORDER.md`.
 
 ---
