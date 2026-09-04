@@ -1,0 +1,5 @@
+@import "tailwindcss";
+
+/* Phase 0 is a tool, not a product surface. Dense, legible, unstyled beyond
+   what makes it readable. The QM console in Phase 1 is where layout matters. */
+:root { color-scheme: light dark; }

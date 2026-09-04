@@ -65,6 +65,7 @@ docs/GLOSSARY.md         Web terms explained for the author. You don't need it; 
 packages/engine/         Pure state machine + scoring. No I/O. Start here.
 packages/db/             Postgres schema, row types, row↔domain mapping.
 packages/server/         Fastify authoring API. Owns Postgres.
+packages/client/         Vite + React authoring UI (Phase 0).
 ```
 
 ---
