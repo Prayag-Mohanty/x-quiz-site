@@ -22,6 +22,8 @@ phones, second laptops, and friends on muted calls. The product solves coordinat
 |---|---|
 | `CLAUDE.md` | Project context and architecture invariants. Read first. |
 | `docs/FORMAT_SPEC.md` | **Normative** quiz rules. Code that disagrees is a bug. |
+| `docs/DECISIONS.md` | Stack and architecture choices, pre-made. What's still open. |
+| `docs/GLOSSARY.md` | Web/database terms explained for a hardware person. |
 | `docs/ARCHITECTURE.md` | Data model, media pipeline, QM console, stack rationale. |
 | `docs/BUILD_ORDER.md` | Phased plan with what "done" means per phase. |
 

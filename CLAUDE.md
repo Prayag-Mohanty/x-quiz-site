@@ -6,6 +6,10 @@ Meet + slides + Google Forms + WhatsApp + Google Sheets with one application.
 **Read `docs/FORMAT_SPEC.md` before touching scoring, rounds, or state transitions.**
 It is the normative spec. Code that disagrees with it is a bug.
 
+**Read `docs/DECISIONS.md` before asking the author to choose anything.** Stack, libraries
+and architecture are already decided there. Only the items marked **AUTHOR** are open, and
+those should be raised one at a time, in plain language, with a recommendation.
+
 ---
 
 ## The one rule that shapes everything
@@ -53,20 +57,22 @@ These are decided. Do not relitigate them without discussion.
 
 ```
 docs/FORMAT_SPEC.md      Normative quiz rules. Source of truth.
+docs/DECISIONS.md        Stack and architecture decisions, already made. Read before asking.
 docs/ARCHITECTURE.md     Full design: data model, media pipeline, console layout, build order.
 docs/BUILD_ORDER.md      Phased plan with what "done" means per phase.
 docs/DATA_MODEL.md       How the engine's types map onto the Postgres schema.
+docs/GLOSSARY.md         Web terms explained for the author. You don't need it; he does.
 packages/engine/         Pure state machine + scoring. No I/O. Start here.
-packages/db/             Postgres migrations, row types, and row↔domain mapping.
 ```
 
 ---
 
 ## Current state
 
-Phase 0. The engine package (`packages/engine`) contains the reducer and its test suite.
-`packages/db` has the Postgres schema, applied and tested on PostgreSQL 17.11. The authoring
-UI is next. See `docs/BUILD_ORDER.md`.
+Phase 0. The engine package (`packages/engine`) contains the reducer and its test suite
+(37 tests, passing). The Postgres schema exists and is verified, but predates
+`docs/DECISIONS.md` and is being ported to Drizzle and folded into `packages/server` —
+see `docs/DATA_MODEL.md`. The authoring UI is next. See `docs/BUILD_ORDER.md`.
 
 ---
 
@@ -86,6 +92,12 @@ UI is next. See `docs/BUILD_ORDER.md`.
 - Prayag is the quizmaster whose format this implements. He is a hardware/architecture
   person (M.Tech, IIT Bombay) — comfortable with systems reasoning, less deep in web stacks.
   Explain web-specific choices; don't explain state machines or concurrency.
+- **Do not ask him to pick between libraries or tools.** Those calls are made in
+  `docs/DECISIONS.md`. If something genuinely isn't covered there, pick the boring option,
+  state what you picked in one sentence, and continue. Decide first, mention it after —
+  a question that stops the work is more expensive than a choice he'd have made differently.
+- When a term is unavoidable, define it inline in half a sentence. `docs/GLOSSARY.md` has
+  the fuller version; add to it when you introduce a genuinely new concept.
 - He wants honest, direct assessment over reassurance. If an approach is wrong, say so.
 - He wants to understand his own system, not just receive generated code. Prefer explaining
   the design decision alongside the implementation.
