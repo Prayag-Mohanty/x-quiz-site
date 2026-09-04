@@ -14,6 +14,7 @@ Build it plain and ugly.
 - [x] Engine: types, rotation, scoring ledger, reducer
 - [x] Engine test suite (37 tests, all rules covered)
 - [x] Postgres schema + migrations (`packages/db`) — verified on PostgreSQL 17.11
+- [x] Row types + engine↔DB mappers (`packages/db/src`) — 21 tests
 - [ ] Question authoring UI: rounds, questions, parts, media upload, answers
 - [ ] Quiz setup: teams, round order, direction per round
 

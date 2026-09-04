@@ -14,6 +14,20 @@ whatever it uses; the files are ordinary SQL and will not need rewriting.
 |---|---|---|
 | `migrations/001_content.sql` | Quizzes, teams, rounds, questions, parts, media, scoring config, the readiness view | Phase 0 |
 | `migrations/002_runtime.sql` | Score ledger, QM action log, snapshots, submissions, score views | Phase 1 |
+| `src/rows.ts` | One interface per table, mirroring the SQL | Phase 0 |
+| `src/map.ts` | Row-to-domain mapping — the only place snake_case becomes camelCase | Phase 0 |
+
+**This package has no `pg` and runs no queries.** It ships the schema, the row
+types and the translation; the connection pool belongs to the Phase 1 server.
+That keeps the mappers pure and testable with literals, the same discipline the
+engine follows.
+
+The mappers exist to protect two things SQL will not protect for you. **Order** —
+rows arrive however the planner likes, and the engine indexes into arrays that
+`rotation.ts` does arithmetic on, so everything is sorted by `position` on the way
+through. And **team seating** — a team's index *is* its seat, so `toQuizState`
+throws on a gap or a duplicate rather than letting a silently shifted rotation
+reach a live quiz.
 
 Apply both now. An empty ledger costs nothing, and the ledger is the one
 structure that cannot be retrofitted later.
@@ -49,6 +63,17 @@ with it.
 
 ## Testing
 
+Two suites, because there are two things to get wrong.
+
+`test/map.test.ts` covers the translation — ordering, the seat-contiguity guard,
+and optionality (a NULL `partial_value` must leave the key *absent*, since the
+engine's `value / parts.length` fallback keys off a missing property, not an
+undefined one). No database needed.
+
+```bash
+npm install && npm test        # requires ../engine to be built first
+```
+
 `test/smoke.sql` checks that the schema actually enforces `FORMAT_SPEC` — one
 named assertion per rule, the same convention the engine's tests follow. It
 includes the worked example from §2.1 end to end: a withheld partial stays off
@@ -82,8 +107,8 @@ aborts at the first bad assertion and names the rule that broke.
 
 ## Status
 
-Verified on PostgreSQL 17.11: both migrations apply to an empty database and all
-31 assertions in `test/smoke.sql` pass.
+Verified on PostgreSQL 17.11 and Node 24: both migrations apply to an empty database, all
+31 assertions in `test/smoke.sql` pass, and all 21 mapping tests pass.
 
 14 tables, 4 views, 46 check constraints, 18 foreign keys and 7 triggers. Nothing
 here has run against a database holding a real quiz yet.

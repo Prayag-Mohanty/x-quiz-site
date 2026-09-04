@@ -57,7 +57,7 @@ docs/ARCHITECTURE.md     Full design: data model, media pipeline, console layout
 docs/BUILD_ORDER.md      Phased plan with what "done" means per phase.
 docs/DATA_MODEL.md       How the engine's types map onto the Postgres schema.
 packages/engine/         Pure state machine + scoring. No I/O. Start here.
-packages/db/             Postgres migrations. Content (Phase 0) + ledger (Phase 1).
+packages/db/             Postgres migrations, row types, and row↔domain mapping.
 ```
 
 ---
