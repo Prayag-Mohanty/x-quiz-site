@@ -8,9 +8,12 @@
 
 import Fastify, { type FastifyInstance } from 'fastify';
 import cors from '@fastify/cors';
+import websocket from '@fastify/websocket';
 
 import { describeDbError, pool } from './db.js';
 import { registerRoutes } from './routes.js';
+import { registerJoinRoutes } from './sessions.js';
+import { registerWebSocket } from './ws.js';
 
 export async function buildApp(
   opts: { logger?: boolean } = {},
@@ -40,6 +43,10 @@ export async function buildApp(
     return { ok: rows[0]?.ok === 1 };
   });
 
+  await app.register(websocket);
+
   await registerRoutes(app);
+  await registerJoinRoutes(app);
+  await registerWebSocket(app);
   return app;
 }
