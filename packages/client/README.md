@@ -9,23 +9,33 @@ QM console, and that one earns its layout budget.
 
 ## Running it
 
-Two terminals. Commands are one per line — Windows PowerShell 5.1 does not
-accept `&&` as a separator, and this is a Windows project.
+Two terminals. On Windows PowerShell, use `npm.cmd` rather than `npm`, and one
+command per line:
 
 The API, in the first terminal:
 
 ```
 cd packages/server
-npm run build
-npm start
+npm.cmd run build
+npm.cmd start
 ```
 
 The client, in the second:
 
 ```
 cd packages/client
-npm run dev
+npm.cmd run dev
 ```
+
+Three Windows papercuts, none of them the project's fault:
+
+- PowerShell 5.1 has no `&&` operator, so commands go on separate lines.
+- The bare name `npm` resolves to `npm.ps1`, which the default `Restricted`
+  execution policy blocks. `npm.cmd` is a batch file and sidesteps it.
+  `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned` is the alternative.
+- A shell opened before Node was installed has a stale PATH. Reload it with
+  `$env:Path = [Environment]::GetEnvironmentVariable("Path","Machine")`, or
+  restart the terminal's parent application.
 
 Open http://localhost:5173 — `localhost`, not `127.0.0.1`, since Vite binds the
 IPv6 name. Vite proxies `/api` to the server on port 3000, so the browser only
