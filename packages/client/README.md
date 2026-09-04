@@ -9,20 +9,29 @@ QM console, and that one earns its layout budget.
 
 ## Running it
 
-Two processes. The API first:
+Two terminals. Commands are one per line — Windows PowerShell 5.1 does not
+accept `&&` as a separator, and this is a Windows project.
 
-```bash
-cd packages/server && npm run build && npm start
+The API, in the first terminal:
+
+```
+cd packages/server
+npm run build
+npm start
 ```
 
-Then the client:
+The client, in the second:
 
-```bash
-cd packages/client && npm run dev
+```
+cd packages/client
+npm run dev
 ```
 
-Open http://localhost:5173. Vite proxies `/api` to the server on port 3000, so
-the browser only ever talks to one origin and CORS never comes up.
+Open http://localhost:5173 — `localhost`, not `127.0.0.1`, since Vite binds the
+IPv6 name. Vite proxies `/api` to the server on port 3000, so the browser only
+ever talks to one origin and CORS never comes up.
+
+`npm run build` in the server is only needed after changing its source.
 
 The server needs `DATABASE_URL` in `packages/server/.env`. See
 `packages/db/README.md` for a disposable Postgres if you don't have one.
