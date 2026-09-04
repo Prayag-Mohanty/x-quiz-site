@@ -34,7 +34,7 @@ you still have Meet, and if Meet breaks you still have the engine. Do not skip t
 - [x] QM console (`packages/client` `/qm`): state bar, pounce panel, bounce order, scoreboard
 - [x] Keyboard-first controls (space advances, y/n judge the bounce, u undoes)
 - [x] Team client: question view, pounce box, shared team draft with typing indicators
-- [ ] Public scoreboard view
+- [x] Public scoreboard view (`/scoreboard?quiz=…`)
 - [x] Undo (VOID_EVENT) wired to a single keystroke
 
 **Done when:** you have hosted a real quiz on it.

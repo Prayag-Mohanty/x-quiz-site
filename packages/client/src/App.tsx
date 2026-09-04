@@ -16,6 +16,7 @@ import { api } from './api.js';
 import { useStore } from './store.js';
 import { QuestionEditor } from './components/QuestionEditor.js';
 import { RoundsPanel } from './components/RoundsPanel.js';
+import { RunPanel } from './components/RunPanel.js';
 import { TeamsPanel } from './components/TeamsPanel.js';
 import { AddForm, Button, EditableText, Panel } from './components/ui.js';
 
@@ -64,6 +65,7 @@ export function App() {
             <QuizListPanel />
             <TeamsPanel />
             <IssuesPanel />
+            <RunPanel />
           </div>
 
           <div className="space-y-4">
