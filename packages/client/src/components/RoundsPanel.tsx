@@ -177,7 +177,17 @@ function RoundBlock({
       </ul>
 
       <div className="px-3 py-2">
-        <Button onClick={() => void mutate(() => api.addQuestion(round.id, ''))}>
+        {/* Adding a question opens it. Pressing the button is already a
+            statement of intent to write one, so making the QM then click the
+            new empty row to reach the editor is a step for nothing. */}
+        <Button
+          onClick={() =>
+            void mutate(async () => {
+              const created = await api.addQuestion(round.id, '');
+              onSelectQuestion(created.id);
+            })
+          }
+        >
           + Question
         </Button>
         {round.type === 'WRITTEN' && questions.length !== 4 && (

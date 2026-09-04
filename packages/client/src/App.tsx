@@ -1,10 +1,14 @@
 /**
  * Phase 0 authoring UI.
  *
- * One screen: quizzes down the left, the selected quiz to the right. No router
- * — there is one page. Plain and ugly on purpose; the console that has to work
- * under pressure is Phase 1, and this is the tool that stops you hand-editing
- * JSON at 2am.
+ * Two layouts, not one. With nothing selected there is exactly one thing worth
+ * doing — pick a quiz or make one — so that gets the middle of the screen on its
+ * own. Once a quiz is open it becomes three columns: the quiz and its readiness
+ * on the left, its rounds in the middle, and the question you are editing on the
+ * right, which only exists while you are editing one.
+ *
+ * Plain and ugly on purpose. The console that has to work under pressure is
+ * Phase 1; this is the tool that stops you hand-editing JSON at 2am.
  */
 
 import { useEffect } from 'react';
@@ -16,26 +20,25 @@ import { TeamsPanel } from './components/TeamsPanel.js';
 import { AddForm, Button, EditableText, Panel } from './components/ui.js';
 
 export function App() {
-  const quizzes = useStore((s) => s.quizzes);
   const detail = useStore((s) => s.detail);
   const error = useStore((s) => s.error);
-  const loading = useStore((s) => s.loading);
+  const selectedQuestionId = useStore((s) => s.selectedQuestionId);
   const loadQuizzes = useStore((s) => s.loadQuizzes);
-  const selectQuiz = useStore((s) => s.selectQuiz);
   const clearError = useStore((s) => s.clearError);
-  const mutate = useStore((s) => s.mutate);
 
   useEffect(() => {
     void loadQuizzes();
   }, [loadQuizzes]);
 
+  // The editor is only present while a question is open, so the third column
+  // appears and disappears with it rather than sitting there empty.
+  const editing = Boolean(detail && selectedQuestionId);
+
   return (
     <div className="min-h-screen bg-neutral-100 text-neutral-900">
       <header className="border-b border-neutral-300 bg-white px-4 py-3">
         <h1 className="text-lg font-semibold">Quizmaster — authoring</h1>
-        <p className="text-xs text-neutral-500">
-          Write the quiz down. Running it is Phase 1.
-        </p>
+        <p className="text-xs text-neutral-500">Write the quiz down. Running it is Phase 1.</p>
       </header>
 
       {error && (
@@ -47,77 +50,104 @@ export function App() {
         </div>
       )}
 
-      <div className="grid gap-4 p-4 lg:grid-cols-[18rem_1fr_24rem]">
-        {/* Quizzes */}
-        <div className="space-y-4">
-          <Panel title="Quizzes">
-            <ul className="mb-3 space-y-1">
-              {quizzes.map((quiz) => (
-                <li key={quiz.id}>
-                  <button
-                    onClick={() => void selectQuiz(quiz.id)}
-                    className={`w-full rounded px-2 py-1 text-left text-sm hover:bg-neutral-100 ${
-                      detail?.quiz.id === quiz.id ? 'bg-blue-50 font-medium' : ''
-                    }`}
-                  >
-                    {quiz.title}
-                    <span className="ml-1 text-xs text-neutral-500">{quiz.status}</span>
-                  </button>
-                </li>
-              ))}
-            </ul>
-            {quizzes.length === 0 && !loading && (
-              <p className="mb-3 text-sm text-neutral-500">No quizzes yet.</p>
-            )}
-            <AddForm
-              label="New"
-              placeholder="Quiz title"
-              onAdd={(title) =>
-                void mutate(async () => {
-                  const created = await api.createQuiz(title);
-                  await selectQuiz(created.id);
-                })
+      {!detail ? (
+        <div className="mx-auto max-w-md p-6">
+          <QuizListPanel standalone />
+        </div>
+      ) : (
+        <div
+          className={`grid gap-4 p-4 ${
+            editing ? 'lg:grid-cols-[20rem_1fr_26rem]' : 'lg:grid-cols-[20rem_1fr]'
+          }`}
+        >
+          <div className="space-y-4">
+            <QuizListPanel />
+            <TeamsPanel />
+            <IssuesPanel />
+          </div>
+
+          <div className="space-y-4">
+            <Panel
+              title="Quiz"
+              aside={
+                <Button danger onClick={() => void useStore.getState().mutate(() => api.deleteQuiz(detail.quiz.id))}>
+                  Delete quiz
+                </Button>
               }
-            />
-          </Panel>
-
-          {detail && <TeamsPanel />}
-        </div>
-
-        {/* The quiz */}
-        <div className="space-y-4">
-          {!detail && (
-            <Panel title="Quiz">
-              <p className="text-sm text-neutral-500">Pick a quiz, or make one.</p>
-            </Panel>
-          )}
-          {detail && (
-            <>
-              <Panel
-                title="Quiz"
-                aside={
-                  <Button danger onClick={() => void mutate(() => api.deleteQuiz(detail.quiz.id))}>
-                    Delete quiz
-                  </Button>
+            >
+              <EditableText
+                value={detail.quiz.title}
+                onSave={(title) =>
+                  void useStore.getState().mutate(() => api.updateQuiz(detail.quiz.id, { title }))
                 }
-              >
-                <EditableText
-                  value={detail.quiz.title}
-                  onSave={(title) => void mutate(() => api.updateQuiz(detail.quiz.id, { title }))}
-                />
-              </Panel>
-              <RoundsPanel />
-            </>
+              />
+            </Panel>
+            <RoundsPanel />
+          </div>
+
+          {editing && (
+            <div className="space-y-4">
+              <QuestionEditor />
+            </div>
           )}
         </div>
-
-        {/* Question + readiness */}
-        <div className="space-y-4">
-          {detail && <QuestionEditor />}
-          {detail && <IssuesPanel />}
-        </div>
-      </div>
+      )}
     </div>
+  );
+}
+
+/**
+ * The quiz list, and the only way to make one.
+ *
+ * `standalone` is the empty state: the same panel, centred, carrying the prompt
+ * that used to sit in an otherwise empty box beside it.
+ */
+function QuizListPanel({ standalone = false }: { standalone?: boolean }) {
+  const quizzes = useStore((s) => s.quizzes);
+  const detail = useStore((s) => s.detail);
+  const loading = useStore((s) => s.loading);
+  const selectQuiz = useStore((s) => s.selectQuiz);
+  const mutate = useStore((s) => s.mutate);
+
+  return (
+    <Panel title="Quizzes">
+      {standalone && quizzes.length > 0 && (
+        <p className="mb-2 text-sm text-neutral-600">Pick a quiz, or make one.</p>
+      )}
+
+      <ul className="mb-3 space-y-1">
+        {quizzes.map((quiz) => (
+          <li key={quiz.id}>
+            <button
+              onClick={() => void selectQuiz(quiz.id)}
+              className={`w-full rounded px-2 py-1 text-left text-sm hover:bg-neutral-100 ${
+                detail?.quiz.id === quiz.id ? 'bg-blue-50 font-medium' : ''
+              }`}
+            >
+              {quiz.title}
+              <span className="ml-1 text-xs text-neutral-500">{quiz.status}</span>
+            </button>
+          </li>
+        ))}
+      </ul>
+
+      {quizzes.length === 0 && !loading && (
+        <p className="mb-3 text-sm text-neutral-600">
+          No quizzes yet. Name one below to start.
+        </p>
+      )}
+
+      <AddForm
+        label="New"
+        placeholder="Quiz title"
+        onAdd={(title) =>
+          void mutate(async () => {
+            const created = await api.createQuiz(title);
+            await selectQuiz(created.id);
+          })
+        }
+      />
+    </Panel>
   );
 }
 
@@ -143,9 +173,7 @@ function IssuesPanel() {
         </span>
       }
     >
-      {issues.length === 0 && (
-        <p className="text-sm text-green-700">Nothing outstanding.</p>
-      )}
+      {issues.length === 0 && <p className="text-sm text-green-700">Nothing outstanding.</p>}
       <ul className="space-y-1 text-sm">
         {errors.map((issue, i) => (
           <li key={`e${i}`} className="text-red-700">

@@ -123,9 +123,12 @@ phase is reached. Do not ask them all up front.
    captain who alone can submit. Recommend shared draft — it is closer to how a team in a
    room actually behaves.
 
-6. **Should teams see the live scoreboard during the quiz, or only the QM?** Affects Phase 1
-   UI. Recommend teams see it — it is one of the main things the current spreadsheet setup
-   fails to deliver.
+6. ~~**Should teams see the live scoreboard during the quiz, or only the QM?**~~
+   **ANSWERED (2026-09-05): teams see it live.** The team client carries a live
+   scoreboard alongside the question. Note this is the *public* score — `APPLIED`
+   events only — so a withheld partial stays invisible until the reveal, exactly as
+   FORMAT_SPEC §2.1 requires. The QM's own view shows the provisional score including
+   withheld partials.
 
 ---
 
