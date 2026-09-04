@@ -322,6 +322,32 @@ export function buildQmView(state: QuizState, ctx: RoomContext): QmView {
     standings: qmStandings,
     recent,
     revealed: active?.phase === 'REVEALED',
+
+    // What to present next. Null while a question is still in play.
+    nextQuestion:
+      round && !active
+        ? (() => {
+            const question = round.questions[state.questionIdx];
+            if (!question) return null;
+            return {
+              id: question.id,
+              index: state.questionIdx,
+              total: round.questions.length,
+              // Enough to recognise it, not the whole thing.
+              preview: question.text.slice(0, 120),
+            };
+          })()
+        : null,
+
+    rounds: state.rounds.map((r, i) => ({
+      id: r.id,
+      title: r.title,
+      type: r.type,
+      index: i,
+      questionCount: r.questions.length,
+    })),
+
+    nextDirectTeamName: state.teams[state.nextDirectTeamIdx]?.name ?? null,
   };
 }
 

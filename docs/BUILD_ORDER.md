@@ -29,13 +29,13 @@ Build it plain and ugly.
 Video is an embedded Meet link beside the app. This is deliberate: if the engine breaks
 you still have Meet, and if Meet breaks you still have the engine. Do not skip this.
 
-- [ ] WebSocket server wrapping the reducer; room state in memory, Postgres for durability
-- [ ] Full state snapshot on connect, deltas after — **reconnection is mandatory**
-- [ ] QM console (see ARCHITECTURE §6): state bar, pounce panel, bounce order, scoreboard
-- [ ] Keyboard-first controls
-- [ ] Team client: question view, pounce box, shared team draft with typing indicators
+- [x] WebSocket server wrapping the reducer; room state in memory, Postgres for durability
+- [x] Full state snapshot on connect — reconnection verified; full views rather than deltas
+- [x] QM console (`packages/client` `/qm`): state bar, pounce panel, bounce order, scoreboard
+- [x] Keyboard-first controls (space advances, y/n judge the bounce, u undoes)
+- [x] Team client: question view, pounce box, shared team draft with typing indicators
 - [ ] Public scoreboard view
-- [ ] Undo (VOID_EVENT) wired to a single keystroke
+- [x] Undo (VOID_EVENT) wired to a single keystroke
 
 **Done when:** you have hosted a real quiz on it.
 **Test this first:** kill wifi mid-pounce. It is the most likely live failure.

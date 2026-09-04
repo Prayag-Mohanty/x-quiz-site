@@ -206,6 +206,22 @@ export interface QmView {
   }[];
 
   revealed: boolean;
+
+  /**
+   * The question PRESENT_QUESTION should be called with next.
+   *
+   * The engine tracks a question index and PRESENT_QUESTION takes an id, so
+   * without this the console would have to keep its own copy of the running
+   * order — a second source of truth for which question is next, which is
+   * exactly the bookkeeping this product exists to remove.
+   */
+  nextQuestion: { id: string; index: number; total: number; preview: string } | null;
+
+  /** Every round, so the QM can jump between them between questions. */
+  rounds: { id: string; title: string; type: string; index: number; questionCount: number }[];
+
+  /** Which team the next direct question goes to, under the current rotation. */
+  nextDirectTeamName: string | null;
 }
 
 // ─── Scoreboard view ────────────────────────────────────────────────────────
