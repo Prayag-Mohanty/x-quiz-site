@@ -1,0 +1,17 @@
+{
+  "name": "@quizmaster/engine",
+  "version": "0.1.0",
+  "description": "Pure quiz state machine and scoring ledger. Zero dependencies, zero I/O.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "test": "tsc -p tsconfig.test.json && node --test \"dist-test/test/*.test.js\"",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.0",
+    "@types/node": "^22.0.0"
+  }
+}

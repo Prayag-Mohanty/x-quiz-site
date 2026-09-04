@@ -1,0 +1,319 @@
+import { test, describe } from 'node:test';
+import assert from 'node:assert/strict';
+import { reduce } from '../src/reducer.js';
+import { publicScore, provisionalScore } from '../src/scoring.js';
+import { eid, makeState, simpleQuestion, twoPartQuestion } from './helpers.js';
+import type { QuizState } from '../src/types.js';
+import type { Action } from '../src/actions.js';
+
+/** Apply a sequence of actions. */
+function run(state: QuizState, actions: Action[]): QuizState {
+  return actions.reduce(reduce, state);
+}
+
+describe('DIRECT round — pounce (FORMAT_SPEC §2.1)', () => {
+  test('pounce is blind: contents are stored but phase gates QM reading', () => {
+    let s = makeState({});
+    s = run(s, [
+      { type: 'PRESENT_QUESTION', questionId: 'q1' },
+      { type: 'OPEN_POUNCE' },
+      { type: 'SUBMIT_POUNCE', teamId: 't3', text: 'guess' },
+    ]);
+    assert.equal(s.active?.kind, 'DIRECT');
+    assert.equal(s.active?.phase, 'POUNCE_OPEN');
+    // Evaluation is illegal until the window is closed.
+    assert.throws(() =>
+      reduce(s, { type: 'EVALUATE_POUNCE', teamId: 't3', verdict: 'CORRECT', eventId: eid() }),
+    );
+  });
+
+  test('the direct team cannot pounce on its own question', () => {
+    let s = makeState({ nextDirectTeamIdx: 0 });
+    s = run(s, [
+      { type: 'PRESENT_QUESTION', questionId: 'q1' },
+      { type: 'OPEN_POUNCE' },
+    ]);
+    assert.throws(
+      () => reduce(s, { type: 'SUBMIT_POUNCE', teamId: 't1', text: 'mine' }),
+      /direct team cannot pounce/,
+    );
+  });
+
+  test('correct pounce is +10 and resolves the question without bounce', () => {
+    let s = makeState({});
+    s = run(s, [
+      { type: 'PRESENT_QUESTION', questionId: 'q1' },
+      { type: 'OPEN_POUNCE' },
+      { type: 'SUBMIT_POUNCE', teamId: 't3', text: 'right' },
+      { type: 'CLOSE_POUNCE' },
+      { type: 'EVALUATE_POUNCE', teamId: 't3', verdict: 'CORRECT', eventId: eid() },
+      { type: 'FINISH_POUNCE_EVALUATION' },
+    ]);
+    assert.equal(publicScore(s.ledger, 't3'), 10);
+    assert.equal(s.active?.phase, 'RESOLVED', 'correct pounce ends the question');
+  });
+
+  test('wrong pounce is -5 and bounce still opens', () => {
+    let s = makeState({});
+    s = run(s, [
+      { type: 'PRESENT_QUESTION', questionId: 'q1' },
+      { type: 'OPEN_POUNCE' },
+      { type: 'SUBMIT_POUNCE', teamId: 't3', text: 'wrong' },
+      { type: 'CLOSE_POUNCE' },
+      { type: 'EVALUATE_POUNCE', teamId: 't3', verdict: 'WRONG', eventId: eid() },
+      { type: 'FINISH_POUNCE_EVALUATION' },
+    ]);
+    assert.equal(publicScore(s.ledger, 't3'), -5);
+    assert.equal(s.active?.phase, 'POUNCE_EVALUATED');
+    s = reduce(s, { type: 'OPEN_BOUNCE' });
+    assert.equal(s.active?.phase, 'BOUNCE');
+  });
+
+  test('one pounce per team: resubmission replaces rather than duplicates', () => {
+    let s = makeState({});
+    s = run(s, [
+      { type: 'PRESENT_QUESTION', questionId: 'q1' },
+      { type: 'OPEN_POUNCE' },
+      { type: 'SUBMIT_POUNCE', teamId: 't3', text: 'first' },
+      { type: 'SUBMIT_POUNCE', teamId: 't3', text: 'second' },
+    ]);
+    const active = s.active;
+    assert.ok(active?.kind === 'DIRECT');
+    assert.equal(active.pounces.length, 1);
+    assert.equal(active.pounces[0]?.text, 'second');
+  });
+});
+
+describe('DIRECT round — bounce (FORMAT_SPEC §2.1)', () => {
+  test('bounce starts at the direct team', () => {
+    let s = makeState({ nextDirectTeamIdx: 2 });
+    s = run(s, [
+      { type: 'PRESENT_QUESTION', questionId: 'q1' },
+      { type: 'OPEN_BOUNCE' },
+    ]);
+    const active = s.active;
+    assert.ok(active?.kind === 'DIRECT');
+    assert.equal(active.bounceTeamIdx, 2);
+  });
+
+  test('infinite bounce: dies only after every team has been offered it', () => {
+    let s = makeState({ teams: 4, nextDirectTeamIdx: 0 });
+    s = run(s, [
+      { type: 'PRESENT_QUESTION', questionId: 'q1' },
+      { type: 'OPEN_BOUNCE' },
+      { type: 'BOUNCE_WRONG' }, // t1 -> t2
+      { type: 'BOUNCE_WRONG' }, // t2 -> t3
+      { type: 'BOUNCE_WRONG' }, // t3 -> t4
+    ]);
+    assert.equal(s.active?.phase, 'BOUNCE', 'still alive with one team left');
+    s = reduce(s, { type: 'BOUNCE_WRONG' }); // t4 was the last
+    assert.equal(s.active?.phase, 'DEAD');
+  });
+
+  test('bounce correct is +10 with no negative marking anywhere on bounce', () => {
+    let s = makeState({ teams: 4, nextDirectTeamIdx: 0 });
+    s = run(s, [
+      { type: 'PRESENT_QUESTION', questionId: 'q1' },
+      { type: 'OPEN_BOUNCE' },
+      { type: 'BOUNCE_WRONG' },
+      { type: 'BOUNCE_CORRECT', eventId: eid() },
+    ]);
+    assert.equal(publicScore(s.ledger, 't1'), 0, 'wrong on bounce costs nothing');
+    assert.equal(publicScore(s.ledger, 't2'), 10);
+  });
+});
+
+describe('partial credit — the withheld-points rule (FORMAT_SPEC §2.1)', () => {
+  test('a partial is recorded but NOT published until reveal', () => {
+    let s = makeState({
+      teams: 4,
+      nextDirectTeamIdx: 0,
+      rounds: [
+        {
+          id: 'r1',
+          type: 'DIRECT',
+          title: 'R1',
+          direction: 'CW',
+          questions: [twoPartQuestion('q1')],
+        },
+      ],
+    });
+    s = run(s, [
+      { type: 'PRESENT_QUESTION', questionId: 'q1' },
+      { type: 'OPEN_BOUNCE' },
+      { type: 'BOUNCE_PARTIAL', partIds: ['q1pA'], eventId: eid() },
+    ]);
+
+    assert.equal(publicScore(s.ledger, 't1'), 0, 'withheld from the public scoreboard');
+    assert.equal(provisionalScore(s.ledger, 't1'), 5, 'but visible to the QM');
+    assert.equal(s.active?.phase, 'BOUNCE', 'bounce CONTINUES after a partial');
+  });
+
+  test('the worked example: question yields 15 points across two teams', () => {
+    let s = makeState({
+      teams: 4,
+      nextDirectTeamIdx: 0,
+      rounds: [
+        {
+          id: 'r1',
+          type: 'DIRECT',
+          title: 'R1',
+          direction: 'CW',
+          questions: [twoPartQuestion('q1')],
+        },
+      ],
+    });
+    s = run(s, [
+      { type: 'PRESENT_QUESTION', questionId: 'q1' },
+      { type: 'OPEN_BOUNCE' },
+      { type: 'BOUNCE_PARTIAL', partIds: ['q1pA'], eventId: eid() }, // t1 gets part A
+      { type: 'BOUNCE_WRONG' },                                      // t2 wrong
+      { type: 'BOUNCE_CORRECT', eventId: eid() },                    // t3 gets both
+      { type: 'REVEAL_ANSWER' },
+    ]);
+
+    assert.equal(publicScore(s.ledger, 't1'), 5, 'partial published at reveal');
+    assert.equal(publicScore(s.ledger, 't3'), 10);
+    const total = ['t1', 't2', 't3', 't4'].reduce(
+      (sum, t) => sum + publicScore(s.ledger, t), 0,
+    );
+    assert.equal(total, 15, 'points are NOT conserved — this is intended');
+  });
+
+  test('withheld partials are still published when the question dies', () => {
+    let s = makeState({
+      teams: 3,
+      nextDirectTeamIdx: 0,
+      rounds: [
+        {
+          id: 'r1',
+          type: 'DIRECT',
+          title: 'R1',
+          direction: 'CW',
+          questions: [twoPartQuestion('q1')],
+        },
+      ],
+    });
+    s = run(s, [
+      { type: 'PRESENT_QUESTION', questionId: 'q1' },
+      { type: 'OPEN_BOUNCE' },
+      { type: 'BOUNCE_PARTIAL', partIds: ['q1pA'], eventId: eid() },
+      { type: 'BOUNCE_WRONG' },
+      { type: 'BOUNCE_WRONG' },
+    ]);
+    assert.equal(s.active?.phase, 'DEAD');
+    assert.equal(publicScore(s.ledger, 't1'), 0, 'still withheld while DEAD');
+    s = reduce(s, { type: 'REVEAL_ANSWER' });
+    assert.equal(publicScore(s.ledger, 't1'), 5, 'published at reveal even though it died');
+  });
+
+  test('QM may override the partial value for unequally weighted parts', () => {
+    let s = makeState({
+      teams: 4,
+      nextDirectTeamIdx: 0,
+      rounds: [
+        {
+          id: 'r1',
+          type: 'DIRECT',
+          title: 'R1',
+          direction: 'CW',
+          questions: [twoPartQuestion('q1')],
+        },
+      ],
+    });
+    s = run(s, [
+      { type: 'PRESENT_QUESTION', questionId: 'q1' },
+      { type: 'OPEN_BOUNCE' },
+      { type: 'BOUNCE_PARTIAL', partIds: ['q1pA'], points: 7, eventId: eid() },
+      { type: 'BOUNCE_WRONG' },
+      { type: 'BOUNCE_WRONG' },
+      { type: 'BOUNCE_WRONG' },
+      { type: 'REVEAL_ANSWER' },
+    ]);
+    assert.equal(publicScore(s.ledger, 't1'), 7);
+  });
+});
+
+describe('rotation across questions', () => {
+  test('bounce resolver shifts the anchor; the next direct follows them', () => {
+    let s = makeState({ teams: 8, nextDirectTeamIdx: 0 });
+    s = run(s, [
+      { type: 'PRESENT_QUESTION', questionId: 'q1' },
+      { type: 'OPEN_BOUNCE' },
+      { type: 'BOUNCE_WRONG' },                   // now on t2
+      { type: 'BOUNCE_CORRECT', eventId: eid() }, // t2 wins
+      { type: 'REVEAL_ANSWER' },
+      { type: 'NEXT_QUESTION' },
+    ]);
+    assert.equal(s.nextDirectTeamIdx, 2, 'team after t2 is t3 (index 2)');
+  });
+
+  test('a pounce win leaves the anchor on the previous direct team', () => {
+    let s = makeState({ teams: 8, nextDirectTeamIdx: 0 });
+    s = run(s, [
+      { type: 'PRESENT_QUESTION', questionId: 'q1' },
+      { type: 'OPEN_POUNCE' },
+      { type: 'SUBMIT_POUNCE', teamId: 't6', text: 'right' },
+      { type: 'CLOSE_POUNCE' },
+      { type: 'EVALUATE_POUNCE', teamId: 't6', verdict: 'CORRECT', eventId: eid() },
+      { type: 'FINISH_POUNCE_EVALUATION' },
+      { type: 'REVEAL_ANSWER' },
+      { type: 'NEXT_QUESTION' },
+    ]);
+    assert.equal(s.nextDirectTeamIdx, 1, 'follows direct team t1, not pouncer t6');
+  });
+});
+
+describe('QM control — nothing auto-advances (CLAUDE.md core rule)', () => {
+  test('reveal is illegal before the question resolves or dies', () => {
+    let s = makeState({});
+    s = run(s, [
+      { type: 'PRESENT_QUESTION', questionId: 'q1' },
+      { type: 'OPEN_BOUNCE' },
+    ]);
+    assert.throws(() => reduce(s, { type: 'REVEAL_ANSWER' }));
+  });
+
+  test('advancing to the next question is illegal before reveal', () => {
+    let s = makeState({ teams: 3 });
+    s = run(s, [
+      { type: 'PRESENT_QUESTION', questionId: 'q1' },
+      { type: 'OPEN_BOUNCE' },
+      { type: 'BOUNCE_CORRECT', eventId: eid() },
+    ]);
+    assert.throws(() => reduce(s, { type: 'NEXT_QUESTION' }));
+  });
+
+  test('the QM may skip the pounce window entirely', () => {
+    let s = makeState({});
+    s = run(s, [
+      { type: 'PRESENT_QUESTION', questionId: 'q1' },
+      { type: 'OPEN_BOUNCE' },
+    ]);
+    assert.equal(s.active?.phase, 'BOUNCE');
+  });
+});
+
+describe('ledger integrity', () => {
+  test('void undoes a score without deleting the audit trail', () => {
+    let s = makeState({ teams: 3 });
+    const evId = 'ev-void-me';
+    s = run(s, [
+      { type: 'PRESENT_QUESTION', questionId: 'q1' },
+      { type: 'OPEN_BOUNCE' },
+      { type: 'BOUNCE_CORRECT', eventId: evId },
+    ]);
+    assert.equal(publicScore(s.ledger, 't1'), 10);
+    s = reduce(s, { type: 'VOID_EVENT', eventId: evId });
+    assert.equal(publicScore(s.ledger, 't1'), 0);
+    assert.equal(s.ledger.length, 1, 'the event is retained, not removed');
+    assert.equal(s.ledger[0]?.status, 'VOIDED');
+  });
+
+  test('the reducer never mutates the input state', () => {
+    const s = makeState({});
+    const before = JSON.stringify(s);
+    reduce(s, { type: 'PRESENT_QUESTION', questionId: 'q1' });
+    assert.equal(JSON.stringify(s), before);
+  });
+});
