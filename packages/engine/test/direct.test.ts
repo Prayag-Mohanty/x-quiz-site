@@ -49,7 +49,10 @@ describe('DIRECT round — pounce (FORMAT_SPEC §2.1)', () => {
       { type: 'EVALUATE_POUNCE', teamId: 't3', verdict: 'CORRECT', eventId: eid() },
       { type: 'FINISH_POUNCE_EVALUATION' },
     ]);
-    assert.equal(publicScore(s.ledger, 't3'), 10);
+    // Banked, but withheld: the bounce is about to run and a visible +10 would
+    // tell the room the question is already answered.
+    assert.equal(publicScore(s.ledger, 't3'), 0, 'not on the public scoreboard yet');
+    assert.equal(provisionalScore(s.ledger, 't3'), 10, 'the QM can see it');
     // A pounce is answered on paper before the question is opened to the room.
     // It does not take the question away from the room (§2.1).
     assert.equal(s.active?.phase, 'POUNCE_EVALUATED', 'the room still gets the question');
@@ -126,10 +129,19 @@ describe('DIRECT round — pounce (FORMAT_SPEC §2.1)', () => {
       { type: 'EVALUATE_POUNCE', teamId: 't3', verdict: 'WRONG', eventId: eid() },
       { type: 'FINISH_POUNCE_EVALUATION' },
     ]);
-    assert.equal(publicScore(s.ledger, 't3'), -5);
+    assert.equal(publicScore(s.ledger, 't3'), 0, 'withheld until the reveal');
+    assert.equal(provisionalScore(s.ledger, 't3'), -5);
     assert.equal(s.active?.phase, 'POUNCE_EVALUATED');
     s = reduce(s, { type: 'OPEN_BOUNCE' });
     assert.equal(s.active?.phase, 'BOUNCE');
+
+    // The bounce dies, the QM reveals, and now everyone sees the -5.
+    // Loop rather than a fixed count: t3 pounced, so it is skipped and the
+    // number of offers is one fewer than the number of teams.
+    while (s.active?.phase === 'BOUNCE') s = reduce(s, { type: 'BOUNCE_WRONG' });
+    assert.equal(s.active?.phase, 'DEAD');
+    s = reduce(s, { type: 'REVEAL_ANSWER' });
+    assert.equal(publicScore(s.ledger, 't3'), -5, 'published with everyone else');
   });
 
   test('one pounce per team: resubmission replaces rather than duplicates', () => {

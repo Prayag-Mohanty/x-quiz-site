@@ -247,9 +247,23 @@ test('a whole question with five clients connected at once', async () => {
     (v) => v.pounces.length === 3 && v.pounces.every((p) => p.verdict !== null),
     'all pounces judged',
   );
-  assert.equal(judged.standings.find((s) => s.name === 'Gamma')?.score, 10);
-  assert.equal(judged.standings.find((s) => s.name === 'Beta')?.score, -5);
-  assert.equal(judged.standings.find((s) => s.name === 'Delta')?.score, -5);
+  // Judged, but WITHHELD: the bounce is about to run, and a moving scoreboard
+  // would tell the room whether the question is already answered.
+  for (const name of ['Gamma', 'Beta', 'Delta']) {
+    assert.equal(judged.standings.find((s) => s.name === name)?.score, 0, `${name} public`);
+  }
+  assert.equal(judged.standings.find((s) => s.name === 'Gamma')?.provisionalScore, 10);
+  assert.equal(judged.standings.find((s) => s.name === 'Beta')?.provisionalScore, -5);
+  assert.equal(judged.standings.find((s) => s.name === 'Delta')?.provisionalScore, -5);
+
+  // And no team's socket has carried any of it.
+  for (const team of teams) {
+    const view = team.latest<TeamView>();
+    assert.ok(
+      view?.standings.every((s) => s.score === 0),
+      `${team.label} saw a score move before the reveal`,
+    );
+  }
 
   // The bounce runs after EVERY pounce window (§2.1). Beta, Gamma and Delta all
   // pounced, so they are spent — the bounce is Alpha, the direct team, alone.

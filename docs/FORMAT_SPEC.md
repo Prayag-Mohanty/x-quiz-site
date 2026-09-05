@@ -49,6 +49,12 @@ before bounce begins.
   before the question is opened to the room; it does not take the question away
   from the room. After the pounce window closes and pounces are judged, the
   question bounces among the teams that did not pounce.
+- **Pounce results are withheld until the reveal.** The QM judges them before the
+  bounce runs, but nothing is announced and no score moves until the answer is
+  read out. A published pounce result would leak straight into the bounce: a team
+  watching the scoreboard would see +10 appear and know the question was already
+  answered, or see −5 and know that answer was wrong. Same reason partial credit
+  is withheld, and the same mechanism.
 
 **Bounce.**
 - Begins at the direct team, then proceeds in round direction, wrapping circularly.

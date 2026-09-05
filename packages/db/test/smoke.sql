@@ -254,7 +254,21 @@ SELECT assert_rejects($q$
   VALUES ('11111111-0000-0000-0000-000000000001', '22222222-0000-0000-0000-000000000003',
           '33333333-0000-0000-0000-000000000001', '44444444-0000-0000-0000-000000000001',
           10, 'BOUNCE_CORRECT', 'PENDING')
-$q$, '§2.1 only partial awards are ever withheld');
+$q$, '§2 a bounce award is never withheld - it is announced as it happens');
+
+-- A pounce award IS withheld now: the bounce runs after the pounce window, so
+-- a published pounce result would leak into it. Team 3 already has an APPLIED
+-- +10 from the bounce, so this also proves the two are summed independently.
+INSERT INTO score_event (quiz_id, team_id, round_id, question_id, points, reason, status)
+VALUES ('11111111-0000-0000-0000-000000000001', '22222222-0000-0000-0000-000000000003',
+        '33333333-0000-0000-0000-000000000001', '44444444-0000-0000-0000-000000000001',
+        -5, 'POUNCE_WRONG', 'PENDING');
+
+SELECT assert_eq((SELECT public_score FROM team_score WHERE team_id = '22222222-0000-0000-0000-000000000003'),
+                 10, '§2.1 a withheld pounce stays off the public scoreboard');
+
+SELECT assert_eq((SELECT provisional_score FROM team_score WHERE team_id = '22222222-0000-0000-0000-000000000003'),
+                 5, '§2.1 the QM can see the withheld pounce');
 
 SELECT assert_rejects($q$
   INSERT INTO score_event (quiz_id, team_id, round_id, points, reason, status)

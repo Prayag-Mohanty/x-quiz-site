@@ -215,8 +215,17 @@ function reduceDirect(state: QuizState, action: Action): QuizState {
           ? state.directScoring.pounceCorrect
           : state.directScoring.pounceWrong,
         reason: correct ? 'POUNCE_CORRECT' : 'POUNCE_WRONG',
-        // Pounce results are published immediately — only partials are withheld.
-        status: 'APPLIED',
+        /**
+         * WITHHELD until the reveal, like a partial.
+         *
+         * The bounce runs after the pounce window, so a published pounce result
+         * leaks into it: a team watching the scoreboard sees +10 appear and
+         * knows the question is already answered, or sees -5 and knows that
+         * answer was wrong. Same leak the partial rule exists to prevent, so
+         * the same mechanism closes it. Published by publishPending on
+         * REVEAL_ANSWER, along with everyone else's.
+         */
+        status: 'PENDING',
       };
 
       return {
@@ -473,7 +482,10 @@ function reduceConnect(state: QuizState, action: Action): QuizState {
         questionId: active.questionId,
         points: correct ? stage.correct : stage.wrong,
         reason: correct ? 'CONNECT_CORRECT' : 'CONNECT_WRONG',
-        status: 'APPLIED',
+        // Withheld until the reveal for the same reason as a DIRECT pounce: the
+        // question continues through further reveals, and a moving score tells
+        // the room something about answers it has not earned yet.
+        status: 'PENDING',
       };
 
       return {

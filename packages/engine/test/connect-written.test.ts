@@ -1,7 +1,7 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { reduce } from '../src/reducer.js';
-import { publicScore } from '../src/scoring.js';
+import { publicScore, provisionalScore } from '../src/scoring.js';
 import { eid, makeState } from './helpers.js';
 import type { QuizState, Round } from '../src/types.js';
 import type { Action } from '../src/actions.js';
@@ -36,7 +36,9 @@ describe('VISUAL_CONNECT (FORMAT_SPEC §2.3)', () => {
       { type: 'CLOSE_POUNCE' },
       { type: 'EVALUATE_POUNCE', teamId: 't1', verdict: 'CORRECT', eventId: eid() },
     ]);
-    assert.equal(publicScore(s.ledger, 't1'), 20, 'first reveal is worth 20');
+    // Withheld until the reveal, like every other pounce award.
+    assert.equal(provisionalScore(s.ledger, 't1'), 20, 'first reveal is worth 20');
+    assert.equal(publicScore(s.ledger, 't1'), 0, 'not public until the reveal');
 
     // Second stage
     let s2 = makeState({ teams: 6, rounds: [connectRound] });
@@ -53,8 +55,8 @@ describe('VISUAL_CONNECT (FORMAT_SPEC §2.3)', () => {
       { type: 'CLOSE_POUNCE' },
       { type: 'EVALUATE_POUNCE', teamId: 't2', verdict: 'CORRECT', eventId: eid() },
     ]);
-    assert.equal(publicScore(s2.ledger, 't1'), -15, 'wrong at stage 1 costs 15');
-    assert.equal(publicScore(s2.ledger, 't2'), 15, 'stage 2 is worth 15');
+    assert.equal(provisionalScore(s2.ledger, 't1'), -15, 'wrong at stage 1 costs 15');
+    assert.equal(provisionalScore(s2.ledger, 't2'), 15, 'stage 2 is worth 15');
   });
 
   test('one pounce per team per QUESTION, not per reveal', () => {
@@ -91,8 +93,11 @@ describe('VISUAL_CONNECT (FORMAT_SPEC §2.3)', () => {
       { type: 'EVALUATE_POUNCE', teamId: 't1', verdict: 'WRONG', eventId: eid() },
       { type: 'EVALUATE_POUNCE', teamId: 't2', verdict: 'CORRECT', eventId: eid() },
     ]);
-    assert.equal(publicScore(s.ledger, 't1'), -15);
-    assert.equal(publicScore(s.ledger, 't2'), 20);
+    // Both banked, neither public until the reveal.
+    assert.equal(provisionalScore(s.ledger, 't1'), -15);
+    assert.equal(provisionalScore(s.ledger, 't2'), 20);
+    assert.equal(publicScore(s.ledger, 't1'), 0);
+    assert.equal(publicScore(s.ledger, 't2'), 0);
   });
 
   test('a correct pounce ends the question immediately', () => {

@@ -289,8 +289,15 @@ export function buildTeamView(
       // Their own words. Withholding these from the team that typed them would
       // be theatre, and the UI needs to show what was submitted.
       yourText: own?.text ?? null,
-      // A verdict exists only after the QM has judged; `undefined` until then.
-      yourVerdict: own?.verdict ?? null,
+      /**
+       * Held back until the reveal, along with the points.
+       *
+       * The QM judges pounces before the bounce runs, but in the room nobody is
+       * told the outcome until the answer is read out. Showing a team "correct"
+       * mid-bounce would be the same disclosure the withheld score prevents,
+       * arriving by a different route.
+       */
+      yourVerdict: revealed ? (own?.verdict ?? null) : null,
       spent:
         active?.kind === 'VISUAL_CONNECT' ? active.spentTeams.includes(viewer.teamId) : false,
     },
