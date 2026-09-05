@@ -370,6 +370,53 @@ function reduceDirect(state: QuizState, action: Action): QuizState {
       };
     }
 
+    /**
+     * Step the bounce back one team.
+     *
+     * `bounceOffered` is the teams the question has actually been put to, in
+     * order, including whoever is on it now — so undoing a move is popping the
+     * last one and standing on the one before. nextBounceTeamIdx skips teams
+     * already in that list, so the next BOUNCE_WRONG lands on the same team it
+     * did before: the rewind leaves no trace in where the bounce goes next.
+     *
+     * Deliberately does NOT touch the ledger. A partial awarded on the way past
+     * stays awarded; VOID_EVENT is how you take points back. One button that
+     * silently did both would make the harmless mistake destructive.
+     */
+    case 'REWIND_BOUNCE': {
+      const active = requireDirect(state);
+
+      // A bounce that died on the last team: nothing was appended and nobody
+      // moved, so the step to undo is the death itself.
+      if (active.phase === 'DEAD' && active.bounceTeamIdx !== null) {
+        return { ...state, active: { ...active, phase: 'BOUNCE' } };
+      }
+
+      if (active.phase !== 'BOUNCE' || active.bounceTeamIdx === null) {
+        throw new IllegalTransition(action.type, active.phase);
+      }
+      if (active.bounceOffered.length < 2) {
+        // Still on the team the bounce opened with. There is no earlier team;
+        // what they want to undo is OPEN_BOUNCE, which is a different question.
+        throw new IllegalTransition(action.type, 'the first team on the bounce');
+      }
+
+      const offered = active.bounceOffered.slice(0, -1);
+      const previousId = offered[offered.length - 1];
+      const previousIdx = state.teams.findIndex((t) => t.id === previousId);
+      if (previousIdx < 0) throw new Error('Bounce history names a team that is not seated');
+
+      return {
+        ...state,
+        active: {
+          ...active,
+          phase: 'BOUNCE',
+          bounceTeamIdx: previousIdx,
+          bounceOffered: offered,
+        },
+      };
+    }
+
     case 'REVEAL_ANSWER': {
       const active = requireDirect(state);
       if (active.phase !== 'RESOLVED' && active.phase !== 'DEAD') {

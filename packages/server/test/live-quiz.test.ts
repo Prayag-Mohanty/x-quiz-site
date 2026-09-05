@@ -621,3 +621,48 @@ test('the breakdown reports where every point came from, and what was written', 
     },
   );
 });
+
+/**
+ * Undoing a move on the bounce, live.
+ *
+ * The engine test proves the state goes back. This one proves the room does:
+ * the team that was wrongly passed over has to be told it is their turn again,
+ * because in the room they have already stopped talking.
+ */
+test('a misclicked bounce can be stepped back, on every screen', async () => {
+  const { question, creds } = await fixture();
+
+  const [qmJoin, ...teamJoins] = await Promise.all([
+    call('POST', '/api/join/qm', { qmToken: creds.qmToken }),
+    ...creds.teams.map((t: { join_code: string; name: string }) =>
+      call('POST', '/api/join', { code: t.join_code, displayName: `${t.name} player` }),
+    ),
+  ]);
+  const qm = new Client(`${base}/ws?token=${qmJoin.body.token}`, 'QM');
+  const teams = teamJoins.map(
+    (j, i) => new Client(`${base}/ws?token=${j.body.token}`, creds.teams[i].name),
+  );
+  await Promise.all([qm.ready(), ...teams.map((t) => t.ready())]);
+  const [alpha, beta] = teams as [Client, Client];
+
+  qm.send({ type: 'ACTION', action: { type: 'PRESENT_QUESTION', questionId: question.id } });
+  qm.send({ type: 'ACTION', action: { type: 'OPEN_BOUNCE' } });
+  await alpha.waitFor<TeamView>((v) => v.bounce.onYou, "Alpha's turn");
+
+  // The misclick.
+  qm.send({ type: 'ACTION', action: { type: 'BOUNCE_WRONG' } });
+  await beta.waitFor<TeamView>((v) => v.bounce.onYou, "Beta's turn");
+
+  qm.send({ type: 'ACTION', action: { type: 'REWIND_BOUNCE' } });
+
+  const back = await qm.waitFor<QmView>((v) => v.bounce.onTeamName === 'Alpha', 'the rewind');
+  assert.equal(back.phase, 'BOUNCE');
+  await alpha.waitFor<TeamView>((v) => v.bounce.onYou, "Alpha's turn again");
+  await beta.waitFor<TeamView>((v) => !v.bounce.onYou, 'Beta stood down');
+
+  // Beta is offerable again rather than struck off, so the next wrong answer
+  // walks to them exactly as it would have.
+  assert.equal(back.bounce.order.find((t) => t.name === 'Beta')?.offered, false);
+  qm.send({ type: 'ACTION', action: { type: 'BOUNCE_WRONG' } });
+  await beta.waitFor<TeamView>((v) => v.bounce.onYou, 'Beta again');
+});

@@ -28,6 +28,16 @@ export type Action =
       eventId: string;
     }
   | { type: 'BOUNCE_WRONG' }
+  /**
+   * Step the bounce back one team.
+   *
+   * A misclick on "wrong" moves the question to the next team, and in a room
+   * that is listening to the QM read out loud, the fix has to be one keystroke
+   * rather than an apology. This undoes the MOVE only — an award already made
+   * is undone with VOID_EVENT, because they are two different mistakes and
+   * conflating them would make the common one dangerous.
+   */
+  | { type: 'REWIND_BOUNCE' }
   | { type: 'REVEAL_ANSWER' }
   | { type: 'NEXT_QUESTION' }
 

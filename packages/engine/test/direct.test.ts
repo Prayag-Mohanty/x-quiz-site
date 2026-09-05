@@ -395,3 +395,105 @@ describe('ledger integrity', () => {
     assert.equal(JSON.stringify(s), before);
   });
 });
+
+/**
+ * Undoing a move on the bounce.
+ *
+ * Not in FORMAT_SPEC — the format has nothing to say about misclicks. It is
+ * here because the QM is reading a question out loud while pressing keys, and
+ * a wrong key currently moved the question to the next team with no way back.
+ */
+describe('REWIND_BOUNCE', () => {
+  test('steps the bounce back to the previous team', () => {
+    let s = makeState({ teams: 4, nextDirectTeamIdx: 0 });
+    s = run(s, [
+      { type: 'PRESENT_QUESTION', questionId: 'q1' },
+      { type: 'OPEN_BOUNCE' },
+      { type: 'BOUNCE_WRONG' },
+      { type: 'BOUNCE_WRONG' },
+    ]);
+    assert.equal(s.active?.kind === 'DIRECT' && s.active.bounceTeamIdx, 2);
+
+    s = reduce(s, { type: 'REWIND_BOUNCE' });
+    assert.equal(s.active?.kind === 'DIRECT' && s.active.bounceTeamIdx, 1);
+    assert.equal(s.active?.kind === 'DIRECT' && s.active.phase, 'BOUNCE');
+
+    s = reduce(s, { type: 'REWIND_BOUNCE' });
+    assert.equal(s.active?.kind === 'DIRECT' && s.active.bounceTeamIdx, 0);
+  });
+
+  test('the rewound team is offered again, not skipped', () => {
+    let s = makeState({ teams: 4, nextDirectTeamIdx: 0 });
+    s = run(s, [
+      { type: 'PRESENT_QUESTION', questionId: 'q1' },
+      { type: 'OPEN_BOUNCE' },
+      { type: 'BOUNCE_WRONG' },
+      { type: 'REWIND_BOUNCE' },
+    ]);
+    // Back on t1, and t2 is no longer in the offered list — so the next wrong
+    // answer walks to t2 exactly as it did the first time. A rewind that left
+    // the team marked as offered would silently skip them.
+    assert.equal(s.active?.kind === 'DIRECT' && s.active.bounceTeamIdx, 0);
+    s = reduce(s, { type: 'BOUNCE_WRONG' });
+    assert.equal(s.active?.kind === 'DIRECT' && s.active.bounceTeamIdx, 1);
+  });
+
+  test('revives a question that died on the last team', () => {
+    let s = makeState({ teams: 3, nextDirectTeamIdx: 0 });
+    s = run(s, [
+      { type: 'PRESENT_QUESTION', questionId: 'q1' },
+      { type: 'OPEN_BOUNCE' },
+      { type: 'BOUNCE_WRONG' },
+      { type: 'BOUNCE_WRONG' },
+      { type: 'BOUNCE_WRONG' },
+    ]);
+    assert.equal(s.active?.kind === 'DIRECT' && s.active.phase, 'DEAD');
+
+    // The last wrong answer moved nobody — it ended the question. So undoing it
+    // puts the same team back on the spot rather than stepping backwards.
+    s = reduce(s, { type: 'REWIND_BOUNCE' });
+    assert.equal(s.active?.kind === 'DIRECT' && s.active.phase, 'BOUNCE');
+    assert.equal(s.active?.kind === 'DIRECT' && s.active.bounceTeamIdx, 2);
+  });
+
+  test('leaves the ledger alone — points are undone with VOID_EVENT', () => {
+    let s = makeState({
+      teams: 4,
+      nextDirectTeamIdx: 0,
+      rounds: [
+        { id: 'r1', type: 'DIRECT', title: 'R1', direction: 'CW', questions: [twoPartQuestion('q1')] },
+      ],
+    });
+    s = run(s, [
+      { type: 'PRESENT_QUESTION', questionId: 'q1' },
+      { type: 'OPEN_BOUNCE' },
+      { type: 'BOUNCE_PARTIAL', partIds: ['q1pA'], eventId: eid() },
+    ]);
+    const banked = provisionalScore(s.ledger, 't1');
+    assert.ok(banked > 0);
+
+    s = reduce(s, { type: 'REWIND_BOUNCE' });
+    // Position rewound, credit kept. One button that did both would make the
+    // harmless mistake destructive.
+    assert.equal(s.active?.kind === 'DIRECT' && s.active.bounceTeamIdx, 0);
+    assert.equal(provisionalScore(s.ledger, 't1'), banked);
+    assert.deepEqual(
+      s.active?.kind === 'DIRECT' ? s.active.partsCredited : {},
+      { q1pA: 't1' },
+    );
+  });
+
+  test('refuses on the first team, where there is nothing to step back to', () => {
+    let s = makeState({ teams: 4, nextDirectTeamIdx: 0 });
+    s = run(s, [
+      { type: 'PRESENT_QUESTION', questionId: 'q1' },
+      { type: 'OPEN_BOUNCE' },
+    ]);
+    assert.throws(() => reduce(s, { type: 'REWIND_BOUNCE' }), /not legal/i);
+  });
+
+  test('refuses when there is no bounce running', () => {
+    const s = run(makeState({}), [{ type: 'PRESENT_QUESTION', questionId: 'q1' }]);
+    assert.throws(() => reduce(s, { type: 'REWIND_BOUNCE' }), /not legal/i);
+  });
+});

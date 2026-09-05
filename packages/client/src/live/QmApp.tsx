@@ -234,6 +234,19 @@ function connectPrimaryAction(view: QmView): { label: string; action: Action } |
   }
 }
 
+/**
+ * Who the bounce steps back to — named on the button, not left to be guessed.
+ *
+ * The offered list is in the order the question was actually put to teams, so
+ * the one before the last is where a rewind lands. On a DEAD question nobody
+ * moved, so it lands on the team that is already showing.
+ */
+function previousBounceTeam(view: QmView): string | null {
+  const offered = view.bounce.order.filter((t) => t.offered);
+  if (view.phase === 'DEAD') return view.bounce.onTeamName;
+  return offered[offered.length - 2]?.name ?? null;
+}
+
 function Console({
   view,
   quizId,
@@ -252,6 +265,21 @@ function Console({
   const primary = primaryAction(view);
   const bouncing = view.bounce.active;
 
+  /**
+   * Whether the bounce can step back a team.
+   *
+   * Two shapes. Mid-bounce it needs somewhere to step back TO, which is a
+   * second team in the offered list. DEAD is the other misclick — "wrong" on
+   * the last eligible team ends the question, and undoing that puts the same
+   * team back on the spot rather than stepping anywhere.
+   */
+  const offeredCount = view.bounce.order.filter((t) => t.offered).length;
+  const canRewind =
+    view.round?.type === 'DIRECT' &&
+    (view.phase === 'DEAD'
+      ? view.bounce.onTeamId !== null
+      : bouncing && offeredCount >= 2);
+
   // Keyboard first. During a quiz you are talking and reading; hunting for a
   // button breaks the flow (ARCHITECTURE §6).
   useEffect(() => {
@@ -267,6 +295,11 @@ function Console({
       if (bouncing) {
         if (e.key === 'y' || e.key === 'Y') act({ type: 'BOUNCE_CORRECT', eventId: '' });
         if (e.key === 'n' || e.key === 'N') act({ type: 'BOUNCE_WRONG' });
+      }
+      // b for back. Next to n on the keyboard is exactly where you do NOT want
+      // this, so it is not next to n on the keyboard.
+      if ((e.key === 'b' || e.key === 'B') && canRewind) {
+        act({ type: 'REWIND_BOUNCE' });
       }
       if ((e.key === 'u' || e.key === 'U') && view.recent[0]) {
         act({ type: 'VOID_EVENT', eventId: view.recent[0].eventId });
@@ -333,6 +366,19 @@ function Console({
             title="Skip the pounce window entirely"
           >
             Skip pounce → bounce
+          </button>
+        )}
+        {/* Undoing a MOVE, which is the mistake with no ledger entry behind it
+            and therefore the one "Undo last" cannot fix. */}
+        {canRewind && (
+          <button
+            onClick={() => act({ type: 'REWIND_BOUNCE' })}
+            className="rounded border border-neutral-400 px-3 py-2 text-sm"
+            title="Put the question back to the previous team. Points already awarded stay awarded."
+          >
+            {view.phase === 'DEAD' ? 'Un-kill — back to' : 'Back to'}{' '}
+            {previousBounceTeam(view) ?? 'previous team'}{' '}
+            <span className="opacity-60">b</span>
           </button>
         )}
         {view.recent[0] && (
