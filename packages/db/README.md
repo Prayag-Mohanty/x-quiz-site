@@ -70,10 +70,26 @@ clears that on its own schedule, so a quiz stored there is a quiz waiting to be
 deleted. This project's dev cluster started life there, for a ten-minute schema
 check, and had to be moved once it held real content.
 
-**Postgres does not start itself.** A cluster started with `pg_ctl` stays down
-after a reboot until something starts it again. `Quizmaster\start-database.ps1`
-does that; the permanent fix is registering it as a Windows service with
-`pg_ctl register`, which needs an administrator shell.
+**Postgres does not start itself** — unless you make it a Windows service. A
+cluster started by hand with `pg_ctl` stays down after a reboot. Registering it
+starts it with the machine:
+
+```
+pg_ctl register -N "QuizmasterPostgres" -U "NT AUTHORITY\NetworkService" -D C:\Quizmaster\pgdata -S auto -o "-p 55432"
+```
+
+That needs an administrator shell, and two things have to be true first. The
+data directory must live **outside your user profile** — a service account
+cannot traverse into `C:\Users\<you>` without rights you should not grant it —
+and the account needs access to the folder:
+
+```
+icacls C:\Quizmaster\pgdata /grant "NT AUTHORITY\NetworkService:(OI)(CI)F" /T
+```
+
+Postgres also refuses to run as an administrative account, so `NetworkService`
+rather than `SYSTEM`. On this machine the dev database is registered exactly
+that way and lives at `C:\Quizmaster\pgdata`.
 
 ## Testing
 
