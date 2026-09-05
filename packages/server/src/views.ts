@@ -117,15 +117,32 @@ function publicQuestion(state: QuizState): PublicQuestion | null {
   };
 }
 
+/**
+ * Scores, in SEAT order.
+ *
+ * scoring.ts sorts by score descending, which is right for a post-quiz
+ * breakdown and wrong for a scoreboard people read during a quiz: rows jump
+ * around every time anyone scores, so you lose your own team mid-glance. Seat
+ * order is stable and is already the order everyone thinks in, since it is the
+ * bounce order too.
+ *
+ * FORMAT_SPEC §3 is happy either way — the system displays tiebreak signals and
+ * the QM decides — but a self-reordering list also quietly implies a ranking
+ * the format does not claim to compute.
+ */
 function publicStandings(state: QuizState): PublicStanding[] {
-  return standings(state).map((s) => ({
+  const seatOf = new Map(state.teams.map((t, i) => [t.id, i]));
+  return standings(state)
+    .slice()
+    .sort((a, b) => (seatOf.get(a.teamId) ?? 0) - (seatOf.get(b.teamId) ?? 0))
+    .map((s) => ({
     teamId: s.teamId,
     name: s.name,
     score: s.score,
     pouncesAttempted: s.pouncesAttempted,
     pouncesCorrect: s.pouncesCorrect,
     pouncesWrong: s.pouncesWrong,
-  }));
+    }));
 }
 
 /** Pounce text is readable only once the window is shut. */
@@ -262,11 +279,16 @@ export function buildQmView(state: QuizState, ctx: RoomContext): QmView {
       ? bounceOrder(active.directTeamIdx, round.direction ?? 'CW', state.teams.length).map(
           (idx) => {
             const team = state.teams[idx];
+            const pounced =
+              !state.rules.pouncersMayBounce &&
+              Boolean(team) &&
+              active.pounces.some((p) => p.teamId === team?.id);
             return {
               teamId: team?.id ?? '',
               name: team?.name ?? '',
               offered: team ? active.bounceOffered.includes(team.id) : false,
               current: idx === active.bounceTeamIdx,
+              spent: pounced,
             };
           },
         )

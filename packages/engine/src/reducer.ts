@@ -14,6 +14,7 @@ import { type Action, IllegalTransition } from './actions.js';
 import { bounceOrder, nextDirectTeam, step } from './rotation.js';
 import type {
   ConnectQuestionState,
+  Direction,
   DirectQuestionState,
   Question,
   QuizState,
@@ -73,6 +74,37 @@ function requireWritten(state: QuizState): WrittenRoundState {
     throw new Error('No active WRITTEN round');
   }
   return state.active;
+}
+
+/**
+ * Who may still be offered the question on the bounce.
+ *
+ * FORMAT_SPEC §2.1: pouncing spends your turn. A team that pounced is out of
+ * the bounce whether it was right or wrong — that is what the negative marking
+ * buys. The direct team never pounces, so it is always eligible.
+ *
+ * Returns the next eligible team index in round direction, or null when every
+ * eligible team has already been offered it and the question is dead.
+ */
+function nextBounceTeamIdx(
+  state: QuizState,
+  active: DirectQuestionState,
+  direction: Direction,
+): number | null {
+  const teamCount = state.teams.length;
+  if (active.bounceTeamIdx === null) return null;
+
+  const spent = state.rules.pouncersMayBounce
+    ? new Set<TeamId>()
+    : new Set(active.pounces.map((p) => p.teamId));
+
+  let idx = active.bounceTeamIdx;
+  for (let i = 0; i < teamCount; i++) {
+    idx = step(idx, direction, teamCount);
+    const id = teamIdAt(state, idx);
+    if (!spent.has(id) && !active.bounceOffered.includes(id)) return idx;
+  }
+  return null;
 }
 
 function append(state: QuizState, event: ScoreEvent): ScoreEvent[] {
@@ -204,11 +236,13 @@ function reduceDirect(state: QuizState, action: Action): QuizState {
       if (active.phase !== 'POUNCE_CLOSED') {
         throw new IllegalTransition(action.type, active.phase);
       }
-      const anyCorrect = active.pounces.some((p) => p.verdict === 'CORRECT');
-      // A correct pounce resolves the question outright — bounce never opens (§2.1).
+      // The bounce runs after EVERY pounce window, whatever the pounces were.
+      // A pounce is answered on paper before the question is opened to the room;
+      // it does not take the question away from the room. Teams that pounced are
+      // excluded from the bounce instead — see nextBounceTeamIdx.
       return {
         ...state,
-        active: { ...active, phase: anyCorrect ? 'RESOLVED' : 'POUNCE_EVALUATED' },
+        active: { ...active, phase: 'POUNCE_EVALUATED' },
       };
     }
 
@@ -282,9 +316,8 @@ function reduceDirect(state: QuizState, action: Action): QuizState {
       const partsCredited = { ...active.partsCredited };
       for (const pid of action.partIds) partsCredited[pid] = teamId;
 
-      // Bounce CONTINUES after a partial — no reveal, next team (§2.1).
-      const nextIdx = step(active.bounceTeamIdx, direction, teamCount);
-      const exhausted = active.bounceOffered.length >= teamCount;
+      // Bounce CONTINUES after a partial — no reveal, next eligible team (§2.1).
+      const nextIdx = nextBounceTeamIdx(state, active, direction);
 
       return {
         ...state,
@@ -292,11 +325,12 @@ function reduceDirect(state: QuizState, action: Action): QuizState {
         active: {
           ...active,
           partsCredited,
-          phase: exhausted ? 'DEAD' : 'BOUNCE',
-          bounceTeamIdx: exhausted ? active.bounceTeamIdx : nextIdx,
-          bounceOffered: exhausted
-            ? active.bounceOffered
-            : [...active.bounceOffered, teamIdAt(state, nextIdx)],
+          phase: nextIdx === null ? 'DEAD' : 'BOUNCE',
+          bounceTeamIdx: nextIdx === null ? active.bounceTeamIdx : nextIdx,
+          bounceOffered:
+            nextIdx === null
+              ? active.bounceOffered
+              : [...active.bounceOffered, teamIdAt(state, nextIdx)],
         },
       };
     }
@@ -306,11 +340,12 @@ function reduceDirect(state: QuizState, action: Action): QuizState {
       if (active.phase !== 'BOUNCE' || active.bounceTeamIdx === null) {
         throw new IllegalTransition(action.type, active.phase);
       }
-      // Infinite bounce: continue until someone is correct or every team has had it.
-      if (active.bounceOffered.length >= teamCount) {
+      // Infinite bounce: continue until someone is correct or every ELIGIBLE
+      // team has had it. Teams that pounced are skipped (§2.1).
+      const nextIdx = nextBounceTeamIdx(state, active, direction);
+      if (nextIdx === null) {
         return { ...state, active: { ...active, phase: 'DEAD' } };
       }
-      const nextIdx = step(active.bounceTeamIdx, direction, teamCount);
       return {
         ...state,
         active: {

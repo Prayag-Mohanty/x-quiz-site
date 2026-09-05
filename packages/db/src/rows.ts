@@ -55,7 +55,7 @@ export interface QuizRow {
   written_stake_correct: number;
   written_stake_wrong: number;
 
-  rule_wrong_pouncer_may_bounce: boolean;
+  rule_pouncers_may_bounce: boolean;
   rule_multiple_stakes_allowed: boolean;
   rule_connect_bounces_after_final_reveal: boolean;
 

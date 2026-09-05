@@ -287,7 +287,7 @@ export function toWrittenScoring(quiz: QuizRow): WrittenScoring {
 
 export function toRuleOptions(quiz: QuizRow): RuleOptions {
   return {
-    wrongPouncerMayBounce: quiz.rule_wrong_pouncer_may_bounce,
+    pouncersMayBounce: quiz.rule_pouncers_may_bounce,
     multipleStakesAllowed: quiz.rule_multiple_stakes_allowed,
     connectBouncesAfterFinalReveal: quiz.rule_connect_bounces_after_final_reveal,
   };

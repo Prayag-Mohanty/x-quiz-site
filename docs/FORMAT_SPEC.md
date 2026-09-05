@@ -42,14 +42,21 @@ before bounce begins.
 - Scoring: **+10 correct, −5 wrong.**
 - One pounce per team per question.
 - The direct team does not pounce (the question is already theirs).
+- **Pouncing spends your turn.** A team that has pounced is out of the bounce for
+  that question, whether it was right or wrong. That is the trade the negative
+  marking pays for.
+- **The bounce still runs.** A pounce is answered on paper and shown to the QM
+  before the question is opened to the room; it does not take the question away
+  from the room. After the pounce window closes and pounces are judged, the
+  question bounces among the teams that did not pounce.
 
 **Bounce.**
 - Begins at the direct team, then proceeds in round direction, wrapping circularly.
 - **Infinite bounce**: continues until a team answers correctly or every team has been
   offered the question (then it dies).
 - Scoring: **+10 correct, 0 wrong.** No negative marking on bounce.
-- A team that pounced incorrectly **may still answer on bounce**. (See open question 1 —
-  this is the assumed default and is configurable.)
+- Teams that pounced are skipped. The bounce is offered to the remaining teams in
+  round direction; if none of them gets it, the question dies.
 
 **Direct-team advancement.** After a question resolves:
 - If a team answered correctly (on bounce), the next direct question goes to the team
@@ -142,7 +149,11 @@ scored via a distinct ledger reason so they can be identified in the breakdown.
 
 ## 5. Open questions (unresolved — confirm before relying on these)
 
-1. May a team that pounced incorrectly still answer on bounce? *Assumed YES; configurable.*
+1. ~~May a team that pounced incorrectly still answer on bounce?~~
+   **ANSWERED (2026-09-05): NO — and it applies to every pouncer, not just a wrong
+   one.** Pouncing spends your turn on that question. The bounce runs after every
+   pounce window, among the teams that did not pounce. `RuleOptions.pouncersMayBounce`
+   defaults to `false`; set it true to restore the old assumption.
 2. May a team stake more than one of the four written-round answers? *Assumed YES.*
 3. Is written-round staking per-question or one stake for the whole round? *Assumed per-question.*
 4. After the final (4th) reveal of a long visual connect with no correct pounce, does the

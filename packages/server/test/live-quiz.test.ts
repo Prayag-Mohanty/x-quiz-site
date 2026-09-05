@@ -251,8 +251,24 @@ test('a whole question with five clients connected at once', async () => {
   assert.equal(judged.standings.find((s) => s.name === 'Beta')?.score, -5);
   assert.equal(judged.standings.find((s) => s.name === 'Delta')?.score, -5);
 
-  // A correct pounce resolves the question; the reveal publishes it.
+  // The bounce runs after EVERY pounce window (§2.1). Beta, Gamma and Delta all
+  // pounced, so they are spent — the bounce is Alpha, the direct team, alone.
   qm.send({ type: 'ACTION', action: { type: 'FINISH_POUNCE_EVALUATION' } });
+  qm.send({ type: 'ACTION', action: { type: 'OPEN_BOUNCE' } });
+
+  const bouncing = await qm.waitFor<QmView>((v) => v.bounce.active, 'the bounce');
+  assert.equal(bouncing.bounce.onTeamName, 'Alpha');
+  await alpha.waitFor<TeamView>((v) => v.bounce.onYou, "Alpha's turn");
+  // The three pouncers are told it is not their turn, and never will be.
+  for (const spent of [beta, gamma, delta]) {
+    const view = spent.latest<TeamView>();
+    assert.equal(view?.bounce.onYou, false, `${spent.label} should be out of the bounce`);
+  }
+
+  // Alpha cannot answer either, so nobody eligible is left and it dies.
+  qm.send({ type: 'ACTION', action: { type: 'BOUNCE_WRONG' } });
+  await qm.waitFor<QmView>((v) => v.phase === 'DEAD', 'the question to die');
+
   qm.send({ type: 'ACTION', action: { type: 'REVEAL_ANSWER' } });
 
   await Promise.all(

@@ -48,10 +48,11 @@ export function ScoreboardApp() {
 }
 
 function Board({ view, status }: { view: ScoreboardView; status: string }) {
-  // Ties are shown, never broken: the format says the QM decides (§3), so equal
-  // scores get equal rank rather than an arbitrary ordering that looks official.
-  let lastScore: number | null = null;
-  let lastRank = 0;
+  // Rows are in SEAT order, which is also the bounce order. Deliberately not
+  // sorted by score: a scoreboard that reshuffles every time someone scores is
+  // unreadable from across a room, and ranking teams would imply a placing the
+  // format does not claim to compute (§3 — the QM decides ties, not the system).
+  const leader = Math.max(0, ...view.standings.map((t) => t.score));
 
   return (
     <Shell>
@@ -68,21 +69,18 @@ function Board({ view, status }: { view: ScoreboardView; status: string }) {
       </header>
 
       <ol className="space-y-2">
-        {view.standings.map((team, i) => {
-          const rank = team.score === lastScore ? lastRank : i + 1;
-          lastScore = team.score;
-          lastRank = rank;
-          return (
-            <li
-              key={team.teamId}
-              className="flex items-baseline gap-4 rounded bg-white px-6 py-4 shadow-sm"
-            >
-              <span className="w-10 text-2xl font-mono text-neutral-400">{rank}</span>
-              <span className="flex-1 text-3xl">{team.name}</span>
-              <span className="text-3xl font-semibold tabular-nums">{team.score}</span>
-            </li>
-          );
-        })}
+        {view.standings.map((team, i) => (
+          <li
+            key={team.teamId}
+            className={`flex items-baseline gap-4 rounded px-6 py-4 shadow-sm ${
+              team.score === leader && leader > 0 ? 'bg-amber-50' : 'bg-white'
+            }`}
+          >
+            <span className="w-10 font-mono text-2xl text-neutral-400">{i + 1}</span>
+            <span className="flex-1 text-3xl">{team.name}</span>
+            <span className="text-3xl font-semibold tabular-nums">{team.score}</span>
+          </li>
+        ))}
       </ol>
 
       {view.standings.length === 0 && (

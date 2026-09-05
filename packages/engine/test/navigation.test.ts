@@ -99,6 +99,10 @@ describe('navigating between questions and rounds', () => {
       { type: 'CLOSE_POUNCE' },
       { type: 'EVALUATE_POUNCE', teamId: 't3', verdict: 'CORRECT', eventId: 'e1' },
       { type: 'FINISH_POUNCE_EVALUATION' },
+      // The bounce runs after the pounce window regardless (§2.1), so the
+      // question has to be played out before it can be revealed.
+      { type: 'OPEN_BOUNCE' },
+      { type: 'BOUNCE_CORRECT', eventId: 'e2' },
       { type: 'REVEAL_ANSWER' },
       { type: 'NEXT_QUESTION' },
     ]);

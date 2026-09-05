@@ -47,7 +47,7 @@ function quizRow(over: Partial<QuizRow> = {}): QuizRow {
     written_wrong: 0,
     written_stake_correct: 15,
     written_stake_wrong: -5,
-    rule_wrong_pouncer_may_bounce: true,
+    rule_pouncers_may_bounce: false,
     rule_multiple_stakes_allowed: true,
     rule_connect_bounces_after_final_reveal: false,
     created_at: NOW,
@@ -367,12 +367,12 @@ test('a null note is absent on the domain type and null again on the way back', 
 
 test('scoring config and rule toggles come across from the quiz row', () => {
   const state = toQuizState(
-    load({ quiz: quizRow({ direct_pounce_wrong: -10, rule_wrong_pouncer_may_bounce: false }) }),
+    load({ quiz: quizRow({ direct_pounce_wrong: -10, rule_pouncers_may_bounce: true }) }),
     resolve,
   );
   assert.equal(state.directScoring.pounceWrong, -10);
   assert.equal(state.directScoring.pounceCorrect, 10);
-  assert.equal(state.rules.wrongPouncerMayBounce, false);
+  assert.equal(state.rules.pouncersMayBounce, true);
 });
 
 test('connect stages keep their decay order', () => {

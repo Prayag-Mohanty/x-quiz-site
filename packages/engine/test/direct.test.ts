@@ -39,7 +39,7 @@ describe('DIRECT round — pounce (FORMAT_SPEC §2.1)', () => {
     );
   });
 
-  test('correct pounce is +10 and resolves the question without bounce', () => {
+  test('correct pounce is +10, and the bounce still runs afterwards', () => {
     let s = makeState({});
     s = run(s, [
       { type: 'PRESENT_QUESTION', questionId: 'q1' },
@@ -50,7 +50,70 @@ describe('DIRECT round — pounce (FORMAT_SPEC §2.1)', () => {
       { type: 'FINISH_POUNCE_EVALUATION' },
     ]);
     assert.equal(publicScore(s.ledger, 't3'), 10);
-    assert.equal(s.active?.phase, 'RESOLVED', 'correct pounce ends the question');
+    // A pounce is answered on paper before the question is opened to the room.
+    // It does not take the question away from the room (§2.1).
+    assert.equal(s.active?.phase, 'POUNCE_EVALUATED', 'the room still gets the question');
+
+    s = run(s, [{ type: 'OPEN_BOUNCE' }]);
+    assert.equal(s.active?.phase, 'BOUNCE');
+  });
+
+  test('a team that pounced is out of the bounce, right or wrong', () => {
+    // 8 teams, direct is t1. t2 pounces right, t3 pounces wrong; both are spent.
+    let s = makeState({ teams: 8, nextDirectTeamIdx: 0 });
+    s = run(s, [
+      { type: 'PRESENT_QUESTION', questionId: 'q1' },
+      { type: 'OPEN_POUNCE' },
+      { type: 'SUBMIT_POUNCE', teamId: 't2', text: 'right' },
+      { type: 'SUBMIT_POUNCE', teamId: 't3', text: 'wrong' },
+      { type: 'CLOSE_POUNCE' },
+      { type: 'EVALUATE_POUNCE', teamId: 't2', verdict: 'CORRECT', eventId: eid() },
+      { type: 'EVALUATE_POUNCE', teamId: 't3', verdict: 'WRONG', eventId: eid() },
+      { type: 'FINISH_POUNCE_EVALUATION' },
+      { type: 'OPEN_BOUNCE' },
+    ]);
+    // Starts at the direct team, who never pounces.
+    assert.equal(s.active?.kind === 'DIRECT' && s.active.bounceTeamIdx, 0);
+
+    // Next should skip t2 AND t3 and land on t4.
+    s = run(s, [{ type: 'BOUNCE_WRONG' }]);
+    assert.equal(s.active?.kind === 'DIRECT' && s.active.bounceTeamIdx, 3, 'skips both pouncers');
+  });
+
+  test('if every other team pounced, the bounce is the direct team alone', () => {
+    let s = makeState({ teams: 4, nextDirectTeamIdx: 0 });
+    s = run(s, [
+      { type: 'PRESENT_QUESTION', questionId: 'q1' },
+      { type: 'OPEN_POUNCE' },
+      { type: 'SUBMIT_POUNCE', teamId: 't2', text: 'a' },
+      { type: 'SUBMIT_POUNCE', teamId: 't3', text: 'b' },
+      { type: 'SUBMIT_POUNCE', teamId: 't4', text: 'c' },
+      { type: 'CLOSE_POUNCE' },
+      { type: 'EVALUATE_POUNCE', teamId: 't2', verdict: 'WRONG', eventId: eid() },
+      { type: 'EVALUATE_POUNCE', teamId: 't3', verdict: 'WRONG', eventId: eid() },
+      { type: 'EVALUATE_POUNCE', teamId: 't4', verdict: 'WRONG', eventId: eid() },
+      { type: 'FINISH_POUNCE_EVALUATION' },
+      { type: 'OPEN_BOUNCE' },
+      { type: 'BOUNCE_WRONG' },
+    ]);
+    // Nobody eligible is left, so the question dies rather than looping.
+    assert.equal(s.active?.phase, 'DEAD');
+  });
+
+  test('pouncersMayBounce restores the older behaviour when set', () => {
+    let s = makeState({ teams: 4, nextDirectTeamIdx: 0 });
+    s = { ...s, rules: { ...s.rules, pouncersMayBounce: true } };
+    s = run(s, [
+      { type: 'PRESENT_QUESTION', questionId: 'q1' },
+      { type: 'OPEN_POUNCE' },
+      { type: 'SUBMIT_POUNCE', teamId: 't2', text: 'a' },
+      { type: 'CLOSE_POUNCE' },
+      { type: 'EVALUATE_POUNCE', teamId: 't2', verdict: 'WRONG', eventId: eid() },
+      { type: 'FINISH_POUNCE_EVALUATION' },
+      { type: 'OPEN_BOUNCE' },
+      { type: 'BOUNCE_WRONG' },
+    ]);
+    assert.equal(s.active?.kind === 'DIRECT' && s.active.bounceTeamIdx, 1, 't2 is offered it');
   });
 
   test('wrong pounce is -5 and bounce still opens', () => {
@@ -257,6 +320,9 @@ describe('rotation across questions', () => {
       { type: 'CLOSE_POUNCE' },
       { type: 'EVALUATE_POUNCE', teamId: 't6', verdict: 'CORRECT', eventId: eid() },
       { type: 'FINISH_POUNCE_EVALUATION' },
+      // The bounce still runs after a pounce, and dies unanswered here.
+      { type: 'OPEN_BOUNCE' },
+      ...Array.from({ length: 7 }, () => ({ type: 'BOUNCE_WRONG' }) as const),
       { type: 'REVEAL_ANSWER' },
       { type: 'NEXT_QUESTION' },
     ]);

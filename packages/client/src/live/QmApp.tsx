@@ -515,11 +515,19 @@ function BounceOrder({ view }: { view: QmView }) {
           <li
             key={t.teamId}
             className={`flex justify-between rounded px-2 py-1 ${
-              t.current ? 'bg-blue-100 font-semibold' : t.offered ? 'text-neutral-400 line-through' : ''
+              t.current
+                ? 'bg-blue-100 font-semibold'
+                : t.spent
+                  ? 'text-neutral-400'
+                  : t.offered
+                    ? 'text-neutral-400 line-through'
+                    : ''
             }`}
           >
-            <span>{t.name}</span>
+            <span className={t.spent ? 'line-through' : ''}>{t.name}</span>
             {t.current && <span className="text-xs">now</span>}
+            {/* Pounced, so skipped — say why rather than silently passing over. */}
+            {!t.current && t.spent && <span className="text-xs">pounced</span>}
           </li>
         ))}
       </ol>

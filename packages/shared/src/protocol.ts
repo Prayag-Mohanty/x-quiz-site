@@ -186,8 +186,20 @@ export interface QmView {
     active: boolean;
     onTeamId: string | null;
     onTeamName: string | null;
-    /** The whole circle in order, so the QM never loses track under wrap-around. */
-    order: { teamId: string; name: string; offered: boolean; current: boolean }[];
+    /**
+     * The whole circle in order, so the QM never loses track under wrap-around.
+     *
+     * `spent` means the team pounced and is therefore out of this bounce (§2.1).
+     * Without it the panel lists teams that will be silently skipped, which is
+     * the exact confusion it exists to prevent.
+     */
+    order: {
+      teamId: string;
+      name: string;
+      offered: boolean;
+      current: boolean;
+      spent: boolean;
+    }[];
   };
 
   /** Who is connected, so the QM knows a team has actually arrived. */

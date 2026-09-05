@@ -67,8 +67,17 @@ export const DEFAULT_CONNECT_STAGES: readonly ConnectStage[] = [
  * Defaults encode the current assumption; flipping one must not require code changes.
  */
 export interface RuleOptions {
-  /** §5.1 — may a team that pounced wrong still answer on bounce? */
-  wrongPouncerMayBounce: boolean;
+  /**
+   * §2.1 — may a team that pounced still answer on the bounce?
+   *
+   * No. Pouncing spends your turn on that question: you are out of the bounce
+   * whether you were right or wrong. That is the trade the negative marking
+   * pays for. Was FORMAT_SPEC §5 open question 1, answered 2026-09-05.
+   *
+   * Kept as an option because the reducer reading a flag is how the rule stays
+   * legible; set it true to restore the older assumption.
+   */
+  pouncersMayBounce: boolean;
   /** §5.2 — may a team stake more than one written-round answer? */
   multipleStakesAllowed: boolean;
   /** §5.4 — does a visual connect bounce after the final reveal, or die? */
@@ -76,7 +85,7 @@ export interface RuleOptions {
 }
 
 export const DEFAULT_RULES: RuleOptions = {
-  wrongPouncerMayBounce: true,
+  pouncersMayBounce: false,
   multipleStakesAllowed: true,
   connectBouncesAfterFinalReveal: false,
 };

@@ -203,7 +203,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
         'direct_pounce_correct', 'direct_pounce_wrong', 'direct_bounce_correct',
         'direct_bounce_wrong', 'direct_question_value',
         'written_correct', 'written_wrong', 'written_stake_correct', 'written_stake_wrong',
-        'rule_wrong_pouncer_may_bounce', 'rule_multiple_stakes_allowed',
+        'rule_pouncers_may_bounce', 'rule_multiple_stakes_allowed',
         'rule_connect_bounces_after_final_reveal',
       ];
       const updated = await updateRow('quiz', req.params.id, req.body, allowed);
