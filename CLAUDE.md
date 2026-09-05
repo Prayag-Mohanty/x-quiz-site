@@ -63,20 +63,33 @@ docs/BUILD_ORDER.md      Phased plan with what "done" means per phase.
 docs/DATA_MODEL.md       How the engine's types map onto the Postgres schema.
 docs/GLOSSARY.md         Web terms explained for the author. You don't need it; he does.
 packages/engine/         Pure state machine + scoring. No I/O. Start here.
-packages/db/             Postgres schema, row types, row↔domain mapping.
-packages/server/         Fastify authoring API. Owns Postgres.
-packages/client/         Vite + React authoring UI (Phase 0).
+packages/db/             Postgres schema, row types, row↔domain mapping. No queries.
+packages/shared/         Wire protocol between server and client. Types only.
+packages/server/         Fastify + ws. Authoring API, live rooms, role projections.
+packages/client/         Vite + React. Authoring, QM console, team client, scoreboard.
 ```
 
 ---
 
 ## Current state
 
-Phase 0. The engine package (`packages/engine`) contains the reducer and its test suite
-(37 tests, passing). `packages/db` has the Postgres schema, verified on PostgreSQL 17,
-plus row types and the row-to-domain mappers — see `docs/DATA_MODEL.md`. It is raw SQL
-rather than Drizzle by explicit decision: it predates `docs/DECISIONS.md` and porting it
-was judged not worth the churn. The authoring UI is next. See `docs/BUILD_ORDER.md`.
+**Phase 1 is built and tested, but has not yet run a real quiz** — which is the phase's own
+definition of done. Authoring, the QM console, the team client and the scoreboard all work
+end to end against a real database and real sockets.
+
+Tests, all passing: engine 37, db mapping 21, server 42, schema 31 SQL assertions.
+
+Two things to know before changing anything:
+
+- `packages/db` is **raw SQL, not Drizzle**, by explicit decision. It predates
+  `docs/DECISIONS.md` and porting it was judged not worth the churn, so the server's query
+  layer matches it. This is the one place the code knowingly diverges from that document.
+- The server sends each client a **role projection**, never the `QuizState`. See
+  `packages/server/src/views.ts` — the comment there is the rule, and the tests assert
+  against the serialised bytes rather than object properties.
+
+Not built: media upload (last Phase 0 item), the written and visual-connect round UIs
+(Phase 4), native video (Phase 3). See `docs/BUILD_ORDER.md`.
 
 ---
 

@@ -228,6 +228,7 @@ function Console({ view, onLeave }: { view: QmView; onLeave: () => void }) {
 
       <div className="grid gap-4 p-4 lg:grid-cols-[1fr_22rem]">
         <div className="space-y-4">
+          <NavigationPanel view={view} act={act} />
           <QuestionPanel view={view} />
           {view.phase === 'POUNCE_CLOSED' || view.phase === 'POUNCE_OPEN' || view.phase === 'POUNCE_FINAL_CALL' ? (
             <PouncePanel view={view} act={act} />
@@ -242,6 +243,80 @@ function Console({ view, onLeave }: { view: QmView; onLeave: () => void }) {
         </div>
       </div>
     </div>
+  );
+}
+
+/**
+ * Moving around the quiz.
+ *
+ * Only available between questions: the engine refuses to navigate out of a
+ * live pounce or bounce, and offering a button that will be refused is worse
+ * than not offering it. Going back does not rewind the scores — points already
+ * awarded stay awarded, and undo is how you take one back.
+ */
+function NavigationPanel({ view, act }: { view: QmView; act: (a: Action) => void }) {
+  const between = view.phase === 'IDLE';
+  const roundIdx = view.round?.index ?? 0;
+  // The real index, not one derived from nextQuestion — that is null once the
+  // round is finished, and falling back to 0 would claim you are at the start.
+  const questionIdx = view.questionIdx;
+  const questionCount = view.rounds[roundIdx]?.questionCount ?? 0;
+  const pastEnd = questionIdx >= questionCount;
+
+  return (
+    <Panel
+      title="Where you are"
+      aside={
+        !between ? (
+          <span className="text-xs text-neutral-500">finish the question to move</span>
+        ) : null
+      }
+    >
+      <div className="flex flex-wrap items-center gap-2 text-sm">
+        <span className="text-neutral-500">Round</span>
+        <select
+          disabled={!between}
+          value={roundIdx}
+          onChange={(e) => act({ type: 'START_ROUND', roundIdx: Number(e.target.value) })}
+          className="rounded border border-neutral-300 bg-white px-2 py-1 text-neutral-900 disabled:opacity-50"
+        >
+          {view.rounds.map((r) => (
+            <option key={r.id} value={r.index}>
+              {r.index + 1}. {r.title} ({r.type}, {r.questionCount}q)
+            </option>
+          ))}
+        </select>
+
+        <span className="ml-3 text-neutral-500">Question</span>
+        <button
+          disabled={!between || questionIdx <= 0}
+          onClick={() => act({ type: 'GO_TO_QUESTION', index: questionIdx - 1 })}
+          className="rounded border border-neutral-400 px-3 py-1 disabled:opacity-40"
+        >
+          ← Prev
+        </button>
+        <span className="font-mono">
+          {questionCount === 0
+            ? '—'
+            : pastEnd
+              ? `end of ${questionCount}`
+              : `${questionIdx + 1} / ${questionCount}`}
+        </span>
+        <button
+          disabled={!between || questionIdx >= questionCount - 1}
+          onClick={() => act({ type: 'GO_TO_QUESTION', index: questionIdx + 1 })}
+          className="rounded border border-neutral-400 px-3 py-1 disabled:opacity-40"
+        >
+          Next →
+        </button>
+
+        {view.nextDirectTeamName && between && (
+          <span className="ml-auto text-xs text-neutral-500">
+            next direct: <strong>{view.nextDirectTeamName}</strong>
+          </span>
+        )}
+      </div>
+    </Panel>
   );
 }
 
@@ -462,11 +537,17 @@ function BounceOrder({ view }: { view: QmView }) {
 function ScorePanel({ view }: { view: QmView }) {
   const anyWithheld = view.standings.some((s) => s.withheldPoints !== 0);
   return (
-    <Panel title="Scores" aside={anyWithheld ? <span className="text-xs text-amber-700">withheld pending reveal</span> : null}>
-      <ul className="space-y-1 text-sm">
-        {view.standings.map((s) => (
-          <li key={s.teamId} className="flex items-baseline justify-between gap-2">
-            <span>{s.name}</span>
+    <Panel
+      title="Live scoreboard"
+      aside={anyWithheld ? <span className="text-xs text-amber-700">withheld pending reveal</span> : null}
+    >
+      <ul className="space-y-1">
+        {view.standings.map((s, i) => (
+          <li key={s.teamId} className="flex items-baseline justify-between gap-2 text-base">
+            <span>
+              <span className="mr-2 font-mono text-xs text-neutral-400">{i + 1}</span>
+              {s.name}
+            </span>
             <span className="font-mono">
               {s.score}
               {s.withheldPoints !== 0 && (

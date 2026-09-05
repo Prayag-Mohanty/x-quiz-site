@@ -33,3 +33,38 @@ input::placeholder,
 textarea::placeholder {
   color: #a3a3a3;
 }
+
+/**
+ * Buttons.
+ *
+ * Tailwind v4 stopped setting `cursor: pointer` on buttons, so every control in
+ * the app felt inert: no pointer, no hover response, nothing to say a thing was
+ * clickable. During a live quiz that reads as a broken screen.
+ */
+button:not(:disabled),
+[role="button"]:not(:disabled),
+label,
+select:not(:disabled),
+summary {
+  cursor: pointer;
+}
+
+button:disabled {
+  cursor: not-allowed;
+}
+
+button:not(:disabled):hover {
+  filter: brightness(0.94);
+}
+
+button:not(:disabled):active {
+  transform: translateY(1px);
+}
+
+button:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: 1px;
+}

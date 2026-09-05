@@ -56,6 +56,19 @@ export type Action =
   | { type: 'FINISH_WRITTEN_EVALUATION' }
 
   // ── Cross-cutting ─────────────────────────────────────────────────────────
+  /**
+   * Move to a question without playing through to it.
+   *
+   * NEXT_QUESTION only advances from REVEALED, which is the normal path and
+   * should stay that way. This is the QM going back to re-read a question, or
+   * skipping one that turned out to be unusable. Legal only between questions,
+   * so it can never interrupt a pounce window or a bounce.
+   *
+   * It deliberately does NOT touch the rotation: whose turn it is to receive a
+   * direct question is a consequence of what has been played, not of what the
+   * QM is looking at.
+   */
+  | { type: 'GO_TO_QUESTION'; index: number }
   | { type: 'MANUAL_ADJUST'; teamId: TeamId; points: number; note: string; eventId: string }
   | { type: 'VOID_EVENT'; eventId: string }
   | { type: 'START_ROUND'; roundIdx: number };

@@ -679,7 +679,25 @@ export function reduce(state: QuizState, action: Action): QuizState {
       if (state.active !== null) {
         throw new IllegalTransition(action.type, 'a question is still active');
       }
+      if (action.roundIdx < 0 || action.roundIdx >= state.rounds.length) {
+        throw new Error(`No round at index ${action.roundIdx}`);
+      }
       return { ...state, roundIdx: action.roundIdx, questionIdx: 0, active: null };
+    }
+
+    case 'GO_TO_QUESTION': {
+      if (state.active !== null) {
+        throw new IllegalTransition(action.type, 'a question is still active');
+      }
+      const round = currentRound(state);
+      if (action.index < 0 || action.index >= round.questions.length) {
+        throw new Error(
+          `No question at index ${action.index} in round "${round.title}"`,
+        );
+      }
+      // Rotation is untouched: who receives the next direct question follows
+      // from what has been PLAYED, not from what the QM is looking at.
+      return { ...state, questionIdx: action.index };
     }
 
     default:

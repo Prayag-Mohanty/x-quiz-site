@@ -38,19 +38,19 @@ export function TeamApp() {
 
   if (!session) return <JoinForm onJoined={setSession} />;
 
+  const rejoin = () => {
+    clearSession();
+    setSession(null);
+  };
+
   if (status === 'rejected') {
     return (
       <Centre>
         <p className="mb-3 text-sm text-red-700">
-          That session is no longer valid. Join again with your team code.
+          That session is no longer valid — the quiz may have been reset. Join
+          again with your team code.
         </p>
-        <button
-          className="rounded border border-neutral-400 px-3 py-1 text-sm"
-          onClick={() => {
-            clearSession();
-            setSession(null);
-          }}
-        >
+        <button className="rounded border border-neutral-400 px-3 py-1 text-sm" onClick={rejoin}>
           Join again
         </button>
       </Centre>
@@ -58,13 +58,58 @@ export function TeamApp() {
   }
 
   if (!view || view.role !== 'TEAM') {
-    return <Centre>Connecting…</Centre>;
+    // Never a dead end. Connecting can fail for reasons this screen cannot see —
+    // a stale token, a quiz that no longer exists, a server that is down — and
+    // "Connecting…" with no way out is indistinguishable from all of them.
+    return <Connecting status={status} onRejoin={rejoin} />;
   }
 
   return <TeamScreen view={view} onLeave={() => {
     clearSession();
     setSession(null);
   }} />;
+}
+
+/**
+ * The waiting screen, with an escape hatch.
+ *
+ * After a few seconds of not connecting, offer the one action that fixes most
+ * causes: join again. Sitting on a spinner forever is the worst possible answer
+ * two minutes before a quiz starts.
+ */
+function Connecting({ status, onRejoin }: { status: string; onRejoin: () => void }) {
+  const [slow, setSlow] = useState(false);
+  useEffect(() => {
+    const timer = setTimeout(() => setSlow(true), 4000);
+    return () => clearTimeout(timer);
+  }, []);
+
+  return (
+    <Centre>
+      <p className="mb-1 font-medium">
+        {status === 'reconnecting' ? 'Reconnecting…' : 'Connecting…'}
+      </p>
+      <p className="text-sm text-neutral-600">
+        {status === 'reconnecting'
+          ? 'The connection dropped. This will pick up where you left off.'
+          : 'Joining the quiz.'}
+      </p>
+      {slow && (
+        <div className="mt-4 border-t border-neutral-200 pt-3">
+          <p className="mb-2 text-sm text-neutral-600">
+            Taking longer than it should. Your saved session may be for a quiz
+            that no longer exists.
+          </p>
+          <button
+            className="rounded border border-neutral-400 px-3 py-1 text-sm"
+            onClick={onRejoin}
+          >
+            Start over and enter my code again
+          </button>
+        </div>
+      )}
+    </Centre>
+  );
 }
 
 // ─── Joining ────────────────────────────────────────────────────────────────
@@ -420,21 +465,31 @@ function Scoreboard({ view }: { view: TeamView }) {
   return (
     <div className="rounded border border-neutral-200 bg-white p-4">
       <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-neutral-500">
-        Scores
+        Live scoreboard
       </p>
       <ol className="space-y-1">
-        {view.standings.map((team) => (
+        {view.standings.map((team, i) => (
           <li
             key={team.teamId}
-            className={`flex justify-between text-sm ${
-              team.teamId === view.you.teamId ? 'font-semibold' : ''
+            className={`flex items-baseline justify-between rounded px-2 py-1 ${
+              team.teamId === view.you.teamId ? 'bg-blue-50 font-semibold' : ''
             }`}
           >
-            <span>{team.name}</span>
-            <span className="font-mono">{team.score}</span>
+            <span>
+              <span className="mr-2 font-mono text-xs text-neutral-400">{i + 1}</span>
+              {team.name}
+              {team.teamId === view.you.teamId && (
+                <span className="ml-1 text-xs text-blue-700">you</span>
+              )}
+            </span>
+            <span className="font-mono text-lg tabular-nums">{team.score}</span>
           </li>
         ))}
       </ol>
+      <p className="mt-2 text-xs text-neutral-500">
+        Updates as the quizmaster scores. Partial credit appears when the answer
+        is revealed.
+      </p>
     </div>
   );
 }

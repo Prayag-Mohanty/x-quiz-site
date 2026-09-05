@@ -22,6 +22,12 @@ interface Credentials {
 
 export function RunPanel() {
   const quizId = useStore((s) => s.detail?.quiz.id);
+  // Refetch when the teams change, not only when the quiz does. A team added
+  // after this panel loaded had no code shown against it, which looked like the
+  // code was missing rather than merely stale.
+  const teamSignature = useStore((s) =>
+    (s.detail?.teams ?? []).map((t) => `${t.id}:${t.name}`).join('|'),
+  );
   const [creds, setCreds] = useState<Credentials | null>(null);
   const [showToken, setShowToken] = useState(false);
   const [copied, setCopied] = useState<string | null>(null);
@@ -40,7 +46,7 @@ export function RunPanel() {
     return () => {
       cancelled = true;
     };
-  }, [quizId]);
+  }, [quizId, teamSignature]);
 
   if (!quizId || !creds) return null;
 

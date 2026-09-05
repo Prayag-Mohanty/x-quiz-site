@@ -217,6 +217,16 @@ export interface QmView {
    */
   nextQuestion: { id: string; index: number; total: number; preview: string } | null;
 
+  /**
+   * Where the quiz actually is, even past the end of a round.
+   *
+   * Deriving this from nextQuestion is wrong once the round is finished:
+   * nextQuestion is null there, and a navigation control that falls back to 0
+   * tells the QM they are on question 1 of 3 while the screen says there are
+   * none left.
+   */
+  questionIdx: number;
+
   /** Every round, so the QM can jump between them between questions. */
   rounds: { id: string; title: string; type: string; index: number; questionCount: number }[];
 

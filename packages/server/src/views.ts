@@ -339,6 +339,8 @@ export function buildQmView(state: QuizState, ctx: RoomContext): QmView {
           })()
         : null,
 
+    questionIdx: state.questionIdx,
+
     rounds: state.rounds.map((r, i) => ({
       id: r.id,
       title: r.title,
