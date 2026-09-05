@@ -286,12 +286,19 @@ function TeamScreen({ view, onLeave }: { view: TeamView; onLeave: () => void }) 
           )}
         </div>
 
-        {/* Everything you glance at. On a phone this falls below the question,
-            which is the same priority order stacked instead of side by side. */}
+        {/* Everything you glance at. Below the question on a narrow screen,
+            which is the same priority order stacked rather than beside.
+
+            Scores and attendance are both short lists that read at a glance, so
+            they sit side by side wherever there is room for two columns — which
+            is everywhere except a phone held upright and the desktop sidebar,
+            and in the sidebar there is only one column to have. */}
         <div className="space-y-3">
           <DraftBox view={view} />
-          <Scoreboard view={view} />
-          <PresenceBox view={view} />
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1">
+            <Scoreboard view={view} />
+            <PresenceBox view={view} />
+          </div>
         </div>
       </div>
     </div>

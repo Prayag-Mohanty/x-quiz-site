@@ -16,6 +16,7 @@
 
 import { useRef, useState } from 'react';
 import { api, type QuestionRow } from '../api.js';
+import { optimiseImage } from '../optimiseImage.js';
 import { useStore } from '../store.js';
 import { Button } from './ui.js';
 
@@ -80,7 +81,12 @@ function MediaRole({
     // One at a time, in the order chosen: positions come from the server, so
     // uploading in parallel would give an order nobody asked for.
     for (const file of Array.from(files)) {
-      await mutate(() => api.uploadMedia(question.id, role, file));
+      // Shrunk here rather than on the server: the browser already has a
+      // decoder, and a 4MB question image takes about three and a half seconds
+      // to reach a team through a tunnel — differently for each team, which
+      // matters while a pounce window is open. See src/optimiseImage.ts.
+      const upload = await optimiseImage(file);
+      await mutate(() => api.uploadMedia(question.id, role, upload));
     }
     setBusy(false);
     if (input.current) input.current.value = '';

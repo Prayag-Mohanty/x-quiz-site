@@ -433,10 +433,14 @@ function Console({
           )}
         </div>
 
+        {/* Below `lg` this column is the full width of the page, and two short
+            lists stacked down it is a lot of scrolling for very little ink. */}
         <div className="space-y-4">
-          <ScorePanel view={view} />
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-1">
+            <ScorePanel view={view} />
+            <PresencePanel view={view} />
+          </div>
           <AdjustPanel view={view} act={act} />
-          <PresencePanel view={view} />
         </div>
       </div>
     </div>

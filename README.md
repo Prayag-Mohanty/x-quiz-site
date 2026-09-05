@@ -236,9 +236,10 @@ No test had caught it. That is what running one is for.
 
 ### Left
 
-- **Phase 2 — media pipeline.** Object storage, transcoding, client preload before a
-  round, a team-by-team "media loaded" grid, synced playback on a QM cue. Today media is
-  a file on disk served over HTTP, which is fine for an image and untested for video.
+- **Phase 2 — media pipeline.** Object storage, a team-by-team "media loaded" grid, and
+  synced playback on a QM cue. Images are now downscaled in the browser before upload, so
+  a question image reaches a team in about a second through a tunnel rather than four.
+  Preload is deliberately NOT built — see below. Video is still untested.
 - **Phase 3 — native video.** LiveKit, QM broadcast with selective unmute, team-private
   audio rooms, a video grid in the console. This is the part that removes the second
   browser window.
@@ -246,6 +247,23 @@ No test had caught it. That is what running one is for.
   spectator view is done — it is the projector view above.
 - **Hosting.** Deliberately deferred until a real quiz has been run. A tunnel is the
   stand-in and it is enough.
+
+### Preload, and why it is not built
+
+`ARCHITECTURE` calls for question media to be preloaded to clients and played on the QM's
+cue. It is not built, because preloading means sending a team the media of a question that
+has not been asked yet — and on a visual connect that is the whole round. Anything a
+browser has fetched is one click away in its network tab, so there is no version of this
+that is merely inconvenient to look at.
+
+Measured through a Cloudflare tunnel, the cost of not preloading is about a second for a
+normal image and roughly four for an unoptimised 4MB one, of which ~0.7s is the round trip
+that no amount of preloading removes. Downscaling on upload takes most of the rest.
+
+If the remaining second matters — it is a fairness question on a connect, since teams see
+the image at slightly different moments while a pounce window is open — the honest fix is
+to preload the bytes encrypted and release the key on the cue. That is real work and a
+real decision, not a default.
 
 ### Open rules
 
@@ -261,7 +279,7 @@ the schema both insist on.
 cd packages/engine && npm test    # 70 — the state machine, every rule in FORMAT_SPEC
 cd packages/db     && npm test    # 21 — row-to-domain mapping
 cd packages/server && npm test    # 73 — API, projections, sockets, access, concurrency
-cd packages/client && npm test    # 18 — the inline text formatter and slide spacing
+cd packages/client && npm test    # 27 — text formatting, slide spacing, image sizing
 psql -d quizmaster -f packages/db/test/smoke.sql   # 35 — the schema enforces FORMAT_SPEC
 ```
 
