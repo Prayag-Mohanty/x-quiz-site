@@ -162,7 +162,10 @@ scored via a distinct ledger reason so they can be identified in the breakdown.
    defaults to `false`; set it true to restore the old assumption.
 2. May a team stake more than one of the four written-round answers? *Assumed YES.*
 3. Is written-round staking per-question or one stake for the whole round? *Assumed per-question.*
-4. After the final (4th) reveal of a long visual connect with no correct pounce, does the
-   question simply die, or is there a bounce? *Assumed DIES.*
+4. ~~After the final (4th) reveal of a long visual connect with no correct pounce, does the
+   question simply die, or is there a bounce?~~
+   **ANSWERED (2026-09-06): IT DIES.** There is no bounce anywhere in a connect. The last
+   image is shown, any pounces on it are judged, and then the answer is revealed.
+   `RuleOptions.connectBouncesAfterFinalReveal` stays `false`.
 5. Should the QM be able to make arbitrary manual score adjustments mid-quiz (e.g. a
    penalty for a rules violation)? *Assumed YES; ledger supports it.*

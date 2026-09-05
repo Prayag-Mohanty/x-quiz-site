@@ -123,7 +123,22 @@ export function getRoom(quizId: string): Promise<Room> {
 async function loadRoom(quizId: string): Promise<Room> {
   const load: QuizLoad = await loadQuiz(quizId);
   // Phase 2 swaps this for a signed R2 URL.
-  const state = toQuizState(load, (a) => a.url ?? `/media/${a.storage_key}`);
+  const loaded = toQuizState(load, (a) => a.url ?? `/media/${a.storage_key}`);
+
+  /**
+   * Start with an EMPTY ledger, whatever the database holds.
+   *
+   * toQuizState fills the ledger from score_event, and the replay below appends
+   * every award again — so a room rebuilt after a restart came back with every
+   * event twice and every score doubled, on every screen, mid-quiz. The rows in
+   * score_event are the persisted PROJECTION of the replay (same event ids,
+   * minted here and stored inside the action), not a second input to it.
+   *
+   * The rule this encodes: the action log is the only source of quiz state. If
+   * the ledger could also come from the database there would be two, and they
+   * would have to agree forever.
+   */
+  const state = { ...loaded, ledger: [] };
 
   const room: Room = {
     quizId,

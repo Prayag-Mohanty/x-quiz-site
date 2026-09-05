@@ -11,7 +11,7 @@
  * Phase 1; this is the tool that stops you hand-editing JSON at 2am.
  */
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { api } from './api.js';
 import { useStore } from './store.js';
 import { QuestionEditor } from './components/QuestionEditor.js';
@@ -23,6 +23,7 @@ import { AddForm, Button, EditableText, Panel } from './components/ui.js';
 export function App() {
   const detail = useStore((s) => s.detail);
   const error = useStore((s) => s.error);
+  const needsAdminToken = useStore((s) => s.needsAdminToken);
   const selectedQuestionId = useStore((s) => s.selectedQuestionId);
   const loadQuizzes = useStore((s) => s.loadQuizzes);
   const clearError = useStore((s) => s.clearError);
@@ -34,6 +35,8 @@ export function App() {
   // The editor is only present while a question is open, so the third column
   // appears and disappears with it rather than sitting there empty.
   const editing = Boolean(detail && selectedQuestionId);
+
+  if (needsAdminToken) return <AdminGate message={error} />;
 
   return (
     <div className="min-h-screen bg-neutral-100 text-neutral-900">
@@ -189,5 +192,55 @@ function IssuesPanel() {
         ))}
       </ul>
     </Panel>
+  );
+}
+
+/**
+ * The authoring tool, refused.
+ *
+ * Reached when the server is not the machine this browser is on — which is the
+ * normal state once it has been exposed so teams can join. The editor can read
+ * every answer in the database, so it is gated; the quizmaster console, the
+ * team client and the scoreboard are not, and still work from here.
+ */
+function AdminGate({ message }: { message: string | null }) {
+  const useAdminToken = useStore((s) => s.useAdminToken);
+  const [token, setToken] = useState('');
+
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-neutral-100 p-4">
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          void useAdminToken(token);
+        }}
+        className="w-full max-w-md rounded border border-neutral-300 bg-white p-6"
+      >
+        <p className="mb-1 text-xs font-semibold tracking-widest text-neutral-400 uppercase">
+          Quizmaster
+        </p>
+        <h1 className="mb-2 text-xl font-semibold">Authoring is locked</h1>
+        <p className="mb-4 text-sm text-neutral-600">
+          {message ?? 'This server will not let this browser edit quizzes.'}
+        </p>
+        <input
+          className="w-full rounded border border-neutral-300 bg-white px-3 py-2 font-mono text-sm text-neutral-900"
+          value={token}
+          onChange={(e) => setToken(e.target.value)}
+          placeholder="Admin token"
+        />
+        <button
+          type="submit"
+          disabled={!token.trim()}
+          className="mt-3 w-full rounded bg-neutral-900 px-3 py-2 text-white disabled:opacity-40"
+        >
+          Unlock
+        </button>
+        <p className="mt-4 border-t border-neutral-200 pt-3 text-xs text-neutral-500">
+          Running a quiz needs none of this. The console, the team screens and
+          the scoreboard are open — only writing questions is behind the token.
+        </p>
+      </form>
+    </div>
   );
 }

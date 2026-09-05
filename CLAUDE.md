@@ -62,6 +62,7 @@ docs/ARCHITECTURE.md     Full design: data model, media pipeline, console layout
 docs/BUILD_ORDER.md      Phased plan with what "done" means per phase.
 docs/DATA_MODEL.md       How the engine's types map onto the Postgres schema.
 docs/GLOSSARY.md         Web terms explained for the author. You don't need it; he does.
+docs/RUNNING.md          How to run a quiz other people can join. Ports, access, tunnels.
 packages/engine/         Pure state machine + scoring. No I/O. Start here.
 packages/db/             Postgres schema, row types, row↔domain mapping. No queries.
 packages/shared/         Wire protocol between server and client. Types only.
@@ -77,7 +78,7 @@ packages/client/         Vite + React. Authoring, QM console, team client, score
 definition of done. Authoring, the QM console, the team client and the scoreboard all work
 end to end against a real database and real sockets.
 
-Tests, all passing: engine 54, db mapping 21, server 61, schema 35 SQL assertions.
+Tests, all passing: engine 54, db mapping 21, server 64, schema 35 SQL assertions.
 
 Two things to know before changing anything:
 

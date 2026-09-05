@@ -56,12 +56,46 @@ export class ApiError extends Error {
   }
 }
 
+/**
+ * The admin token, when the server is running somewhere other than this laptop.
+ *
+ * Unset is the normal case: a server on localhost lets the machine it runs on
+ * edit without one. It only appears once ADMIN_TOKEN is set on the server,
+ * which is what a quizmaster does before exposing it to a network — see
+ * packages/server/src/access.ts.
+ */
+const ADMIN_TOKEN_KEY = 'quizmaster.adminToken';
+
+export function adminToken(): string {
+  try {
+    return localStorage.getItem(ADMIN_TOKEN_KEY) ?? '';
+  } catch {
+    return '';
+  }
+}
+
+export function setAdminToken(token: string): void {
+  try {
+    if (token) localStorage.setItem(ADMIN_TOKEN_KEY, token);
+    else localStorage.removeItem(ADMIN_TOKEN_KEY);
+  } catch {
+    // A browser with storage blocked can still author for one session.
+  }
+}
+
+function authHeaders(): Record<string, string> {
+  const token = adminToken();
+  return token ? { 'x-admin-token': token } : {};
+}
+
 async function request<T>(method: string, url: string, body?: unknown): Promise<T> {
   const res = await fetch(url, {
     method,
-    ...(body === undefined
-      ? {}
-      : { headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }),
+    headers: {
+      ...authHeaders(),
+      ...(body === undefined ? {} : { 'content-type': 'application/json' }),
+    },
+    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
   });
 
   if (res.status === 204) return undefined as T;
@@ -116,6 +150,8 @@ export const api = {
     form.append('file', file);
     const res = await fetch(`/api/questions/${questionId}/media?role=${role}`, {
       method: 'POST',
+      // No content-type: the browser sets the multipart boundary itself.
+      headers: authHeaders(),
       body: form,
     });
     const body = await res.json().catch(() => null);

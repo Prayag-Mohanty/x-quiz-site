@@ -80,7 +80,13 @@ export interface RuleOptions {
   pouncersMayBounce: boolean;
   /** §5.2 — may a team stake more than one written-round answer? */
   multipleStakesAllowed: boolean;
-  /** §5.4 — does a visual connect bounce after the final reveal, or die? */
+  /**
+   * §5.4 — does a visual connect bounce after the final reveal, or die?
+   *
+   * It dies. There is no bounce anywhere in a connect: the last image goes up,
+   * the pounces on it are judged, the answer is read out. Was FORMAT_SPEC §5
+   * open question 4, answered 2026-09-06.
+   */
   connectBouncesAfterFinalReveal: boolean;
 }
 

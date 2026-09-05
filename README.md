@@ -23,6 +23,7 @@ The product solves coordination.This does **not** solve cheating/googling.
 | `docs/ARCHITECTURE.md` | Data model, media pipeline, QM console, stack rationale. |
 | `docs/DATA_MODEL.md` | How the engine's types map onto the Postgres schema. |
 | `docs/BUILD_ORDER.md` | Phased plan with what "done" means per phase. |
+| `docs/RUNNING.md` | How to run a quiz other people can actually join. |
 
 ---
 
@@ -32,11 +33,13 @@ You need PostgreSQL 14+ and Node 22+. Create a database, apply the migrations in
 then start the two processes.
 
 ```
-psql -d quizmaster -v ON_ERROR_STOP=1 -f packages/db/migrations/001_content.sql
-psql -d quizmaster -v ON_ERROR_STOP=1 -f packages/db/migrations/002_runtime.sql
-psql -d quizmaster -v ON_ERROR_STOP=1 -f packages/db/migrations/003_sessions.sql
-psql -d quizmaster -v ON_ERROR_STOP=1 -f packages/db/migrations/004_credential_defaults.sql
+Get-ChildItem packages/db/migrations/*.sql | Sort-Object Name | ForEach-Object {
+  psql -d quizmaster -v ON_ERROR_STOP=1 -f $_.FullName
+}
 ```
+
+Apply them in numeric order — the loop above does that, and does not go stale
+when another one is added.
 
 Put a `DATABASE_URL` in `packages/server/.env`, then, in two terminals. One command per
 line — Windows PowerShell 5.1 has no `&&`, and this is a Windows project:
@@ -68,9 +71,17 @@ install a permanent one.
 | `/qm` | The quizmaster console. Drives the live quiz. |
 | `/play` | The team client. Teams join with a short code. |
 | `/scoreboard?quiz=…` | Read-only scoreboard, safe to project or share. |
+| `/breakdown?quiz=…` | Post-quiz report: every award, every answer written. Needs your token. |
 
 The authoring screen has a **Run this quiz** panel with your console link, the scoreboard
 link, and one join code per team.
+
+### Letting other people in
+
+The setup above answers only to the machine it runs on, which is right for
+writing questions and useless for running a quiz. **`docs/RUNNING.md`** covers
+the difference: building the client so everything is one port, what stays open
+to players and what does not, and getting teams in from other cities.
 
 ---
 

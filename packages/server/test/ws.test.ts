@@ -357,13 +357,48 @@ test('actions are persisted, and a dropped room rebuilds from the log', async ()
     ['PRESENT_QUESTION', 'OPEN_POUNCE', 'CLOSE_POUNCE'],
   );
 
+  // Award something, so recovery has a ledger to get wrong.
+  qm.send({ type: 'ACTION', action: { type: 'FINISH_POUNCE_EVALUATION' } });
+  qm.send({ type: 'ACTION', action: { type: 'OPEN_BOUNCE' } });
+  qm.send({ type: 'ACTION', action: { type: 'BOUNCE_CORRECT', eventId: '' } });
+  const before = await qm.waitForState<QmView>((v) =>
+    v.standings.some((s) => s.provisionalScore === 10),
+  );
+  const scoresBefore = before.standings.map((s) => `${s.name}:${s.provisionalScore}`).join(',');
+
+  const ledgerBefore = await pool.query(
+    'SELECT count(*)::int AS n FROM score_event WHERE quiz_id = $1',
+    [quiz.id],
+  );
+
   // The server restarts: everything held in memory is gone.
   evictAllRooms();
 
   const rejoined = await joinQm(creds.qmToken);
   // Rebuilt purely by replaying the log through the pure reducer.
   const view = await rejoined.waitForState<QmView>((v) => v.role === 'QM');
-  assert.equal(view.phase, 'POUNCE_CLOSED');
+  assert.equal(view.phase, 'RESOLVED');
+
+  /**
+   * The scores must come back IDENTICAL, not doubled.
+   *
+   * toQuizState fills the ledger from score_event and the replay appends every
+   * award again, so a rebuilt room used to return with every event twice and
+   * every score doubled — mid-quiz, on every screen. The phase survived the old
+   * version of this test because nothing had been scored yet.
+   */
+  assert.equal(
+    view.standings.map((s) => `${s.name}:${s.provisionalScore}`).join(','),
+    scoresBefore,
+    'a rebuilt room reported different scores',
+  );
+
+  // And the rebuild must not have written the ledger a second time either.
+  const ledgerAfter = await pool.query(
+    'SELECT count(*)::int AS n FROM score_event WHERE quiz_id = $1',
+    [quiz.id],
+  );
+  assert.equal(ledgerAfter.rows[0].n, ledgerBefore.rows[0].n);
 });
 
 // ─── The ledger reaches Postgres ────────────────────────────────────────────

@@ -12,7 +12,15 @@ import { pool } from './db.js';
 const app = await buildApp();
 
 const port = Number(process.env['PORT'] ?? 3000);
-await app.listen({ port, host: '127.0.0.1' });
+
+/**
+ * Loopback by default, because a quiz database with every answer in it should
+ * not be reachable from the coffee shop wifi by accident. Set HOST=0.0.0.0 to
+ * let teams on the network in — and read access.ts first, because that also
+ * exposes the authoring API unless ADMIN_TOKEN is set.
+ */
+const host = process.env['HOST'] ?? '127.0.0.1';
+await app.listen({ port, host });
 
 for (const signal of ['SIGINT', 'SIGTERM'] as const) {
   process.on(signal, () => {

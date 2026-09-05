@@ -9,7 +9,7 @@
  */
 
 import { create } from 'zustand';
-import { api, ApiError, type QuizDetail, type QuizRow } from './api.js';
+import { api, ApiError, setAdminToken, type QuizDetail, type QuizRow } from './api.js';
 
 interface State {
   quizzes: QuizRow[];
@@ -17,12 +17,23 @@ interface State {
   selectedQuestionId: string | null;
   loading: boolean;
   error: string | null;
+  /**
+   * The server refused to let this browser author.
+   *
+   * Either it is not running on this machine and ADMIN_TOKEN is set, or it is
+   * not running on this machine and ADMIN_TOKEN is NOT set — in which case
+   * nothing will help but going back to the machine it runs on. Either way the
+   * shell shows a token prompt rather than an error the user cannot act on.
+   */
+  needsAdminToken: boolean;
 
   loadQuizzes: () => Promise<void>;
   selectQuiz: (id: string) => Promise<void>;
   refresh: () => Promise<void>;
   selectQuestion: (id: string | null) => void;
   clearError: () => void;
+  /** Store a token and retry. Empty clears it. */
+  useAdminToken: (token: string) => Promise<void>;
   /** Run a mutation, surface any rejection, then resync from the server. */
   mutate: (fn: () => Promise<unknown>) => Promise<void>;
 }
@@ -33,8 +44,14 @@ export const useStore = create<State>((set, get) => ({
   selectedQuestionId: null,
   loading: false,
   error: null,
+  needsAdminToken: false,
 
   clearError: () => set({ error: null }),
+  useAdminToken: async (token) => {
+    setAdminToken(token.trim());
+    set({ needsAdminToken: false, error: null });
+    await get().loadQuizzes();
+  },
   selectQuestion: (id) => set({ selectedQuestionId: id }),
 
   loadQuizzes: async () => {
@@ -42,7 +59,7 @@ export const useStore = create<State>((set, get) => ({
     try {
       set({ quizzes: await api.listQuizzes(), error: null });
     } catch (err) {
-      set({ error: describe(err) });
+      set({ error: describe(err), needsAdminToken: isUnauthorised(err) });
     } finally {
       set({ loading: false });
     }
@@ -53,7 +70,7 @@ export const useStore = create<State>((set, get) => ({
     try {
       set({ detail: await api.getQuiz(id), error: null });
     } catch (err) {
-      set({ error: describe(err) });
+      set({ error: describe(err), needsAdminToken: isUnauthorised(err) });
     } finally {
       set({ loading: false });
     }
@@ -65,7 +82,7 @@ export const useStore = create<State>((set, get) => ({
     try {
       set({ detail: await api.getQuiz(id), error: null });
     } catch (err) {
-      set({ error: describe(err) });
+      set({ error: describe(err), needsAdminToken: isUnauthorised(err) });
     }
   },
 
@@ -76,12 +93,17 @@ export const useStore = create<State>((set, get) => ({
     } catch (err) {
       // A 422 here is the format saying no. Show it and still resync, so the
       // screen never drifts from what was actually stored.
-      set({ error: describe(err) });
+      set({ error: describe(err), needsAdminToken: isUnauthorised(err) });
     }
     await get().refresh();
     await get().loadQuizzes();
   },
 }));
+
+/** A 401 is the access hook in access.ts, not a bad request. */
+function isUnauthorised(err: unknown): boolean {
+  return err instanceof ApiError && err.status === 401;
+}
 
 function describe(err: unknown): string {
   if (err instanceof ApiError) return err.message;
