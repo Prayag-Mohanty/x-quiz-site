@@ -10,12 +10,16 @@ whatever it uses; the files are ordinary SQL and will not need rewriting.
 
 ## Files
 
-| File | Contents | Needed by |
-|---|---|---|
-| `migrations/001_content.sql` | Quizzes, teams, rounds, questions, parts, media, scoring config, the readiness view | Phase 0 |
-| `migrations/002_runtime.sql` | Score ledger, QM action log, snapshots, submissions, score views | Phase 1 |
-| `src/rows.ts` | One interface per table, mirroring the SQL | Phase 0 |
-| `src/map.ts` | Row-to-domain mapping — the only place snake_case becomes camelCase | Phase 0 |
+| File | Contents |
+|---|---|
+| `migrations/001_content.sql` | Quizzes, teams, rounds, questions, parts, media, scoring config, the readiness view |
+| `migrations/002_runtime.sql` | Score ledger, QM action log, snapshots, submissions, score views |
+| `migrations/003_sessions.sql` | Join codes and sessions |
+| `migrations/004_credential_defaults.sql` | Database defaults for those credentials |
+| `migrations/005_pouncers_may_bounce.sql` | Renames the rule flag once §5 question 1 was answered |
+| `migrations/006_withhold_pounce_awards.sql` | Lets a pounce award be withheld until the reveal |
+| `src/rows.ts` | One interface per table, mirroring the SQL |
+| `src/map.ts` | Row-to-domain mapping — the only place snake_case becomes camelCase |
 
 **This package has no `pg` and runs no queries.** It ships the schema, the row
 types and the translation; the connection pool belongs to the Phase 1 server.
@@ -29,7 +33,7 @@ through. And **team seating** — a team's index *is* its seat, so `toQuizState`
 throws on a gap or a duplicate rather than letting a silently shifted rotation
 reach a live quiz.
 
-Apply both now. An empty ledger costs nothing, and the ledger is the one
+Apply them all. An empty ledger costs nothing, and the ledger is the one
 structure that cannot be retrofitted later.
 
 ## Applying
@@ -37,29 +41,39 @@ structure that cannot be retrofitted later.
 Requires PostgreSQL 14 or later (`gen_random_uuid()` is core from 13; the syntax
 used here is 14-safe).
 
+Apply them in numeric order; each is wrapped in `BEGIN`/`COMMIT`, so a failure
+leaves nothing behind.
+
 ```bash
-createdb quizmaster && psql -d quizmaster -v ON_ERROR_STOP=1 -f migrations/001_content.sql -f migrations/002_runtime.sql
+createdb quizmaster
+for f in migrations/*.sql; do psql -d quizmaster -v ON_ERROR_STOP=1 -f "$f"; done
 ```
 
-Each file is wrapped in `BEGIN`/`COMMIT`, so a failure leaves nothing behind.
-
-### A disposable cluster
+### A cluster of your own
 
 If you don't have the superuser password for an installed Postgres service — a
 `winget install` sets one unattended and never tells you — you don't need it. The
 same binaries will run a second cluster you own, with no password and no admin
 rights, on another port:
 
-```bash
-initdb -D /tmp/qm-pgdata -U postgres --auth-local=trust --auth-host=trust
-pg_ctl -D /tmp/qm-pgdata -o "-p 55432" -l /tmp/qm-pgdata/server.log start
+```
+initdb -D C:\Users\you\Quizmaster\pgdata -U postgres --auth-local=trust --auth-host=trust
+pg_ctl -D C:\Users\you\Quizmaster\pgdata -o "-p 55432" -l server.log start
 createdb -h 127.0.0.1 -p 55432 -U postgres quizmaster
 ```
 
-Point `psql` at `-p 55432`, and `pg_ctl ... stop` plus deleting the directory
-removes every trace. This is how the schema was verified. Note that the server is
-a child of whatever shell starts it — killing that shell takes the database down
-with it.
+Point `psql` at `-p 55432`. Two things worth knowing.
+
+**The data directory is the database.** That folder holds every byte Postgres
+has — tables, indexes, the write-ahead log. Do not put it in `%TEMP%`: Windows
+clears that on its own schedule, so a quiz stored there is a quiz waiting to be
+deleted. This project's dev cluster started life there, for a ten-minute schema
+check, and had to be moved once it held real content.
+
+**Postgres does not start itself.** A cluster started with `pg_ctl` stays down
+after a reboot until something starts it again. `Quizmaster\start-database.ps1`
+does that; the permanent fix is registering it as a Windows service with
+`pg_ctl register`, which needs an administrator shell.
 
 ## Testing
 
@@ -107,8 +121,10 @@ aborts at the first bad assertion and names the rule that broke.
 
 ## Status
 
-Verified on PostgreSQL 17.11 and Node 24: both migrations apply to an empty database, all
-31 assertions in `test/smoke.sql` pass, and all 21 mapping tests pass.
+Verified on PostgreSQL 17.11 and Node 24: the migrations apply to an empty
+database, all 33 assertions in `test/smoke.sql` pass, and all 21 mapping tests
+pass.
 
-14 tables, 4 views, 46 check constraints, 18 foreign keys and 7 triggers. Nothing
-here has run against a database holding a real quiz yet.
+The schema has since carried an authored quiz through real rounds — questions,
+teams, pounces, a bounce and a written round — so it is no longer only tested,
+it has been used.
