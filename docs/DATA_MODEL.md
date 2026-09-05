@@ -194,3 +194,10 @@ sequence N, so a split-brain room fails on insert instead of diverging quietly.
 `SUBMIT_WRITTEN` — rebuildable from the log at any time. They exist because "what
 did Team 6 actually write?" gets asked after every quiz and answering it by
 unpacking JSONB is miserable.
+
+`packages/server/src/submissions.ts` writes them, in the same transaction as the
+action itself. It has to run after every action rather than at the end of a
+question: a visual connect keeps `pounces` for the current stage only (§2.3), so
+advancing the stage drops the text out of live state. Nothing reads these rows
+back into the engine, and nothing should — if one ever disagrees with a replay,
+the replay wins and the projection is the bug.

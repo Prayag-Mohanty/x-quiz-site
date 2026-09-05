@@ -43,6 +43,10 @@ after(async () => {
       'DELETE FROM quiz_action WHERE quiz_id = $1',
       'DELETE FROM score_event WHERE quiz_id = $1',
       'DELETE FROM session WHERE quiz_id = $1',
+      // The submission projections hold the question and the team down with
+      // ON DELETE RESTRICT, so they go before the quiz does.
+      'DELETE FROM pounce_submission WHERE team_id IN (SELECT id FROM team WHERE quiz_id = $1)',
+      'DELETE FROM written_answer WHERE team_id IN (SELECT id FROM team WHERE quiz_id = $1)',
       'DELETE FROM quiz WHERE id = $1',
     ]) {
       await pool.query(sql, [id]).catch(() => undefined);
@@ -308,6 +312,140 @@ test('a whole question with five clients connected at once', async () => {
 
   // And nobody saw the answer before it was revealed to everyone.
   assert.ok(teams.every((t) => t.everReceived(ANSWER)), 'reveal reached every team');
+
+  // The pounce text is projected out of the log, because "what did Beta
+  // actually write?" is asked after every quiz and the answer should be a
+  // SELECT (002_runtime.sql). Withheld on the wire, recorded in the table.
+  const submissions = await pool.query(
+    `SELECT t.name, p.body, p.verdict, p.stage_idx, p.evaluated_at IS NOT NULL AS judged
+       FROM pounce_submission p JOIN team t ON t.id = p.team_id
+      WHERE p.question_id = $1 ORDER BY t.name`,
+    [question.id],
+  );
+  assert.deepEqual(
+    submissions.rows.map((r: { name: string; body: string; verdict: string }) => [
+      r.name,
+      r.body,
+      r.verdict,
+    ]),
+    [
+      ['Beta', secrets.beta, 'WRONG'],
+      ['Delta', secrets.delta, 'WRONG'],
+      ['Gamma', secrets.gamma, 'CORRECT'],
+    ],
+  );
+  // evaluated_at is non-null exactly when a verdict is — the table's own check.
+  assert.ok(submissions.rows.every((r: { judged: boolean }) => r.judged));
+  // A DIRECT pounce has no reveal stage; that column is for connects (§2.3).
+  assert.ok(submissions.rows.every((r: { stage_idx: number | null }) => r.stage_idx === null));
+});
+
+/**
+ * The written round, projected.
+ *
+ * Teams write on one sheet and it is submitted against every question, so the
+ * table should end up with the sheet under each one, the stake recorded per
+ * question, and locked_at set once collection closes (FORMAT_SPEC §2.2).
+ */
+test('a written round leaves its sheets, stakes and verdicts in the table', async () => {
+  const quiz = (await call('POST', '/api/quizzes', { title: 'Written Projection Test' })).body;
+  createdQuizzes.push(quiz.id);
+  for (const name of ['Alpha', 'Beta']) {
+    await call('POST', `/api/quizzes/${quiz.id}/teams`, { name });
+  }
+  const round = (
+    await call('POST', `/api/quizzes/${quiz.id}/rounds`, { type: 'WRITTEN', title: 'W1' })
+  ).body;
+  const questions = [];
+  for (const body of ['Written one?', 'Written two?']) {
+    const q = (await call('POST', `/api/rounds/${round.id}/questions`, { body })).body;
+    await call('PATCH', `/api/questions/${q.id}`, { answer_text: `Answer to ${body}` });
+    questions.push(q);
+  }
+  const creds = (await call('GET', `/api/quizzes/${quiz.id}/credentials`)).body;
+
+  const qmJoin = await call('POST', '/api/join/qm', { qmToken: creds.qmToken });
+  const alphaJoin = await call('POST', '/api/join', {
+    code: creds.teams[0].join_code,
+    displayName: 'Alpha player',
+  });
+  const qm = new Client(`${base}/ws?token=${qmJoin.body.token}`, 'QM');
+  const alpha = new Client(`${base}/ws?token=${alphaJoin.body.token}`, 'Alpha');
+  await Promise.all([qm.ready(), alpha.ready()]);
+
+  qm.send({ type: 'ACTION', action: { type: 'SHOW_WRITTEN_QUESTION', index: 0 } });
+  await alpha.waitFor<TeamView>((v) => v.written !== null, 'the written round');
+
+  const SHEET = ['1. Bombay', '2. Cream'].join('\n');
+  // One sheet, sent against every question the QM has reached — which is what
+  // the team client does with a single box.
+  alpha.send({
+    type: 'WRITTEN_ANSWER',
+    questionId: questions[0].id,
+    text: SHEET,
+    staked: false,
+  });
+  qm.send({ type: 'ACTION', action: { type: 'SHOW_WRITTEN_QUESTION', index: 1 } });
+  alpha.send({
+    type: 'WRITTEN_ANSWER',
+    questionId: questions[1].id,
+    text: SHEET,
+    staked: true,
+  });
+
+  await qm.waitFor<QmView>(
+    (v) => (v.written?.answers.filter((a) => a.text !== null).length ?? 0) === 2,
+    'both sheets',
+  );
+
+  // Still collecting: nothing is locked, so a stake can still be changed.
+  const open = await pool.query(
+    'SELECT locked_at FROM written_answer WHERE question_id = ANY($1)',
+    [questions.map((q: { id: string }) => q.id)],
+  );
+  assert.equal(open.rows.length, 2);
+  assert.ok(open.rows.every((r: { locked_at: Date | null }) => r.locked_at === null));
+
+  qm.send({ type: 'ACTION', action: { type: 'CLOSE_COLLECTION' } });
+  await qm.waitFor<QmView>((v) => v.written?.phase === 'EVALUATING', 'grading');
+
+  qm.send({
+    type: 'ACTION',
+    action: {
+      type: 'EVALUATE_WRITTEN',
+      teamId: creds.teams[0].id,
+      questionId: questions[1].id,
+      verdict: 'CORRECT',
+      eventId: '',
+    },
+  });
+  // +15, not +10: the stake was declared at submission and is now binding.
+  await qm.waitFor<QmView>(
+    (v) => v.standings.find((s) => s.name === 'Alpha')?.provisionalScore === 15,
+    'the staked award',
+  );
+
+  const { rows } = await pool.query(
+    `SELECT q.position, w.body, w.staked, w.verdict,
+            w.locked_at IS NOT NULL AS locked,
+            w.evaluated_at IS NOT NULL AS judged
+       FROM written_answer w JOIN question q ON q.id = w.question_id
+      WHERE q.round_id = $1 ORDER BY q.position`,
+    [round.id],
+  );
+  assert.deepEqual(
+    rows.map((r: { body: string; staked: boolean; verdict: string | null }) => [
+      r.body,
+      r.staked,
+      r.verdict,
+    ]),
+    [
+      [SHEET, false, null],
+      [SHEET, true, 'CORRECT'],
+    ],
+  );
+  assert.ok(rows.every((r: { locked: boolean }) => r.locked), 'closing the round locks the sheet');
+  assert.deepEqual(rows.map((r: { judged: boolean }) => r.judged), [false, true]);
 });
 
 test('a team that reconnects mid-question rejoins the same room as everyone else', async () => {

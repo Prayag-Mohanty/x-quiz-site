@@ -46,6 +46,10 @@ after(async () => {
       'DELETE FROM quiz_action WHERE quiz_id = $1',
       'DELETE FROM score_event WHERE quiz_id = $1',
       'DELETE FROM session WHERE quiz_id = $1',
+      // The submission projections hold the question and the team down with
+      // ON DELETE RESTRICT, so they go before the quiz does.
+      'DELETE FROM pounce_submission WHERE team_id IN (SELECT id FROM team WHERE quiz_id = $1)',
+      'DELETE FROM written_answer WHERE team_id IN (SELECT id FROM team WHERE quiz_id = $1)',
       'DELETE FROM quiz WHERE id = $1',
     ]) {
       await pool.query(sql, [id]).catch(() => undefined);

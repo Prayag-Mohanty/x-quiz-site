@@ -9,8 +9,9 @@
  *
  *   1. A QM intent arrives on a socket.
  *   2. reduce(state, action) — pure, and the only place quiz state changes.
- *   3. The action is appended to quiz_action, and any new or changed ledger
- *      events are written to score_event.
+ *   3. The action is appended to quiz_action, any new or changed ledger events
+ *      are written to score_event, and pounce text and written sheets are
+ *      projected into their tables for the post-quiz breakdown.
  *   4. Every connected client is sent a fresh view for its role.
  *
  * Persisting the action rather than the state is what makes recovery work: the
@@ -33,6 +34,7 @@ import type { ServerMessage, TeamDraft, View } from '@quizmaster/shared';
 import { pool, query, transaction } from './db.js';
 import { buildQmView, buildScoreboardView, buildTeamView, type RoomContext } from './views.js';
 import { loadQuiz } from './load.js';
+import { persistSubmissions } from './submissions.js';
 
 export interface Connection {
   id: string;
@@ -243,6 +245,10 @@ async function applyNow(room: Room, action: Action, actor: string): Promise<void
       [room.quizId, seq, JSON.stringify(stamped), stamped.type, actor],
     );
     await persistLedger(client, room.quizId, before.ledger, after.ledger);
+    // Pounce text and written sheets, projected for the post-quiz breakdown.
+    // Same transaction as the action, so the projection cannot outlive a
+    // rolled-back transition or lag behind one that committed.
+    await persistSubmissions(client, before, after);
   });
 
   room.state = after;
