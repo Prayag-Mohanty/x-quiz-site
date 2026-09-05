@@ -168,7 +168,9 @@ answers behind the quizmaster's token.
 All five screens in one bundle, and the server serves the build so everything is one
 origin on one port. The server is the source of truth; the client is a render cache. The
 team screen has two layouts: one column on a phone, question-plus-sidebar on a desktop.
-13 tests on the inline text formatter.
+18 tests on the inline text formatter and the slide spacing. Inter is bundled from npm
+rather than fetched from a CDN, so a question never renders in a fallback face because
+someone's DNS was slow mid-quiz.
 
 ---
 
@@ -245,7 +247,7 @@ the schema both insist on.
 cd packages/engine && npm test    # 70 — the state machine, every rule in FORMAT_SPEC
 cd packages/db     && npm test    # 21 — row-to-domain mapping
 cd packages/server && npm test    # 67 — API, projections, sockets, access, concurrency
-cd packages/client && npm test    # 13 — the inline text formatter
+cd packages/client && npm test    # 18 — the inline text formatter and slide spacing
 psql -d quizmaster -f packages/db/test/smoke.sql   # 35 — the schema enforces FORMAT_SPEC
 ```
 

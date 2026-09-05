@@ -20,6 +20,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { TeamView } from '@quizmaster/shared';
 
 import { Rich } from './Rich.js';
+import { trailingLines } from './trailing.js';
 import {
   clearSession,
   loadSession,
@@ -225,6 +226,9 @@ function JoinForm({ onJoined }: { onJoined: (s: StoredSession) => void }) {
  */
 const SLIDE_HEADER = 'bg-[#1b0a63] text-white';
 
+/** Named because a bare newline escape inside JSX braces is easy to misread. */
+const LINE_BREAK = '\n';
+
 function TeamScreen({ view, onLeave }: { view: TeamView; onLeave: () => void }) {
   const status = useLive((s) => s.status);
   const error = useLive((s) => s.error);
@@ -308,15 +312,20 @@ function ConnectionDot({ status }: { status: string }) {
 /**
  * The question, as a slide.
  *
- * Navy bar with the number, white body with the text, and the text set large —
+ * Navy bar with the number, white body with the text in Inter, set large —
  * this is what everyone in the room is reading, and on a desktop it should look
  * like the slide it replaces rather than a paragraph in a phone app. The size
  * steps down on narrow screens because a phone cannot afford 30px type.
+ *
+ * The header carries the number and nothing else. "Question 1 of 3" was there
+ * and is not: on a slide it is chrome, and it tells the room how much is left
+ * in the round, which is the quizmaster's business rather than a fact the
+ * question needs to state about itself.
  */
 function QuestionCard({ view }: { view: TeamView }) {
   if (!view.question) {
     return (
-      <div className="mb-3 overflow-hidden rounded-lg border border-neutral-200 bg-white">
+      <div className="font-question mb-3 overflow-hidden rounded-lg border border-neutral-200 bg-white">
         <div className={`${SLIDE_HEADER} px-5 py-4`}>
           <p className="text-lg font-bold">·</p>
         </div>
@@ -327,17 +336,24 @@ function QuestionCard({ view }: { view: TeamView }) {
     );
   }
   return (
-    <div className="mb-3 overflow-hidden rounded-lg border border-neutral-200 bg-white">
+    <div className="font-question mb-3 overflow-hidden rounded-lg border border-neutral-200 bg-white">
       <div className={`${SLIDE_HEADER} flex items-baseline justify-between gap-3 px-5 py-4`}>
         <p className="text-2xl font-bold lg:text-3xl">{view.question.index + 1}.</p>
-        <p className="text-xs tracking-wide text-white/70 uppercase">
-          Question {view.question.index + 1} of {view.question.total}
-          {view.question.partCount > 1 && ` · ${view.question.partCount} parts`}
-        </p>
+        {/* A multi-part question is a fact about THIS question, so it stays.
+            The running count is not, so it went. */}
+        {view.question.partCount > 1 && (
+          <p className="text-xs tracking-wide text-white/70 uppercase">
+            {view.question.partCount} parts
+          </p>
+        )}
       </div>
       <div className="p-5 lg:p-8">
       <p className="text-lg leading-relaxed whitespace-pre-wrap lg:text-2xl lg:leading-relaxed">
         <Rich text={view.question.text} />
+        {/* Rendered as newlines rather than padding so it scales with the type:
+            two lines of 24px text is more room than two lines of 18px, which is
+            the point on a projector. */}
+        {LINE_BREAK.repeat(trailingLines(view.question.text))}
       </p>
       {view.question.media.map((m) =>
         m.kind === 'IMAGE' ? (
@@ -514,7 +530,7 @@ function DraftBox({ view }: { view: TeamView }) {
 function RevealCard({ view }: { view: TeamView }) {
   if (!view.reveal) return null;
   return (
-    <div className="mb-3 overflow-hidden rounded-lg border border-green-300 bg-white">
+    <div className="font-question mb-3 overflow-hidden rounded-lg border border-green-300 bg-white">
       {/* Same shape as the question, different colour: it is the other slide. */}
       <div className="bg-green-800 px-5 py-3 text-xs font-semibold tracking-wide text-white uppercase">
         Answer
@@ -715,7 +731,7 @@ function WrittenRound({ view }: { view: TeamView }) {
   return (
     <div className="mb-3 space-y-3">
       {/* The question being read out. This is the part that changes. */}
-      <div className="overflow-hidden rounded-lg border border-neutral-200 bg-white">
+      <div className="font-question overflow-hidden rounded-lg border border-neutral-200 bg-white">
         <div className={`${SLIDE_HEADER} flex items-baseline justify-between gap-3 px-5 py-4`}>
           <p className="text-2xl font-bold lg:text-3xl">
             {written.currentQuestion ? `${written.currentQuestion.index + 1}.` : '·'}
@@ -727,6 +743,7 @@ function WrittenRound({ view }: { view: TeamView }) {
           <>
             <p className="text-lg leading-relaxed whitespace-pre-wrap lg:text-2xl lg:leading-relaxed">
               <Rich text={written.currentQuestion.text} />
+              {LINE_BREAK.repeat(trailingLines(written.currentQuestion.text))}
             </p>
             {written.currentQuestion.media.map((m) =>
               m.kind === 'IMAGE' ? (

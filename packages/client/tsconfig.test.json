@@ -6,7 +6,13 @@
     "module": "nodenext",
     "moduleResolution": "nodenext",
     "jsx": "react-jsx",
-    "types": ["node"]
+    "types": [
+      "node"
+    ]
   },
-  "include": ["src/richtext.ts", "test/**/*.ts"]
+  "include": [
+    "src/richtext.ts",
+    "src/live/trailing.ts",
+    "test/**/*.ts"
+  ]
 }
