@@ -91,18 +91,64 @@ to players and what does not, and getting teams in from other cities.
 
 ---
 
+## How a quiz actually runs
+
+**You still need a video call.** That is deliberate, not an omission: Phase 1 leaves
+voice and video on Meet or Zoom beside the app, so that if the app breaks you still have
+the call and if the call breaks you still have the app. The app is the quiz. The call is
+the room. Native video is Phase 3.
+
+Concretely, three things people ask about:
+
+### How teams discuss among themselves
+
+Each team gets a **Team notes** box on its own screen — one shared text area for that
+team. Any of the three members can type in it, everyone on that team sees the text as it
+changes, and it shows who is typing. Nobody outside the team ever receives it.
+
+That replaces the WhatsApp thread, which is the coordination the format actually needs:
+one agreed answer, written down where the person who submits it can see it. It does not
+replace talking. **Teammates who want to talk still need their own call** — a second Meet
+room, a Discord channel, whatever they already use. Team-private audio rooms are the
+Phase 3 item that removes that, and they are not built.
+
+### How the QM takes bounce answers
+
+**Out loud, on the call.** The bounce is a spoken round: the app tells everyone whose
+turn it is — the bounce order sits on every screen with the current team marked, and that
+team gets "Your turn — answer out loud" — and then you listen and press a key.
+
+`y` correct, `n` wrong or pass, `b` steps back a team if you press the wrong one. On a
+multi-part question the partial buttons are pre-computed from the split you authored, so
+partial credit is a click rather than arithmetic done live.
+
+Pounces are the opposite and always have been: **typed, never spoken**, submitted blind.
+You see who has pounced while the window is open and what they wrote only after you close
+it — the rule binds you too, so the decision to close is not coloured by what came in.
+
+### How the QM sees the teams
+
+**By name, not by face.** The console's *Who is here* panel lists every team with the
+people currently connected under it, live. That answers "are we waiting for someone?",
+which is the question that actually stalls the start of a quiz. Teams see the same panel.
+
+There is no video grid in the console — you are looking at the video call for faces. A
+grid inside the console is Phase 3, alongside the SFU.
+
+---
+
 ## Packages
 
 ### `packages/engine` — the state machine
 
 Pure: no I/O, no clock, no randomness, no dependencies. Every transition is a function of
-the previous state and one explicit QM action. `npm test` runs 47 tests covering every rule
+the previous state and one explicit QM action. `npm test` runs 60 tests covering every rule
 in `FORMAT_SPEC`.
 
 ### `packages/db` — schema and mapping
 
 Raw SQL migrations, row types, and the translation between database rows and the engine's
-types. No `pg` and no queries — it is the schema and the mapping, nothing else. 31 SQL
+types. No `pg` and no queries — it is the schema and the mapping, nothing else. 35 SQL
 assertions run against a real Postgres, plus 21 mapping tests.
 
 ### `packages/shared` — the wire protocol
@@ -113,13 +159,16 @@ inventing a second vocabulary for the network.
 ### `packages/server` — Fastify, Postgres, WebSockets
 
 The authoring API, the live room, and the socket layer. One quiz in flight is one room
-holding one `QuizState` in memory; Postgres is durability, not the live store. 42 tests,
-against a real database and real sockets.
+holding one `QuizState` in memory; Postgres is durability, not the live store. 65 tests,
+against a real database and real sockets, including the access boundary that keeps the
+answers behind the quizmaster's token.
 
 ### `packages/client` — Vite + React
 
-All four screens in one bundle. The server is the source of truth; the client is a render
-cache.
+All five screens in one bundle, and the server serves the build so everything is one
+origin on one port. The server is the source of truth; the client is a render cache. The
+team screen has two layouts: one column on a phone, question-plus-sidebar on a desktop.
+13 tests on the inline text formatter.
 
 ---
 
@@ -147,40 +196,57 @@ another's, and withheld partials never cross the wire to a team at all.
 
 ## Status
 
-**Phase 0 is complete** apart from media upload. You can author a quiz — teams, rounds,
-questions, multi-part answers, per-part point splits — and it is stored.
+**Phases 0, 1, 4 and part of 5 are built.** Every round type in `FORMAT_SPEC` has a
+console and a team screen, the whole thing runs from one port through a tunnel, and there
+is a post-quiz report.
 
-**Phase 1 is built and tested, but has not yet run a real quiz.** That is the phase's own
-definition of done, and it is the honest gap: no test tells you whether the console is
-usable while you are talking to ten people.
+**It has still not run a real quiz.** That is Phase 1's own definition of done and the
+honest gap: no test tells you whether the console is usable while you are talking to ten
+people. Everything below is verified against a real database and real sockets; none of it
+is verified against a room full of people.
 
-What works end to end, verified against a real database and real sockets:
+### Done
 
-- Teams join with a short code; several people share one team identity
-- The QM console drives the whole question lifecycle, keyboard first
-- Written-blind pounces — the QM sees who has pounced, not what, until the window closes
-- Partial credit recorded when it happens and published at the reveal, invisible to teams
-  until then
-- Infinite bounce with the order always on screen, and correct direct-team advancement
-- Undo, live scoreboard, and reconnection into the exact current state
-- Moving between rounds and questions without replaying, which cannot interrupt a
-  question in play and never rewinds the ledger
-- Five clients connecting and acting simultaneously, all converging on the same state
+| | |
+|---|---|
+| **Authoring** | Teams, rounds, question order, multi-part answers with point splits, images and audio, readiness checks. Inline `**bold**` / `*italic*` / `_underline_` on questions and answers. |
+| **Direct rounds (§2.1)** | Written-blind pounce, infinite bounce with the order always on screen, partial credit recorded and withheld until the reveal, correct direct-team advancement. |
+| **Written rounds (§2.2)** | Questions read one at a time above a single answer sheet, per-question staking, a grading grid across every team. |
+| **Visual connect (§2.3)** | Staged reveals with the decay ladder on both screens, one pounce per team per connect, spent-team tracking. |
+| **Running it** | QM console, team client, live scoreboard, undo on one key, reconnection into the exact current state, five clients acting at once converging on one state. |
+| **Afterwards** | `/breakdown?quiz=…` — every award attributed, what each team wrote, tiebreak signals, two CSVs. |
+| **Getting people in** | One port serving everything, an access boundary that keeps the answers behind the quizmaster's token, and `docs/RUNNING.md` for LAN versus a tunnel. |
 
-### Not built yet
+### Left
 
-- **Media upload.** Image and audio questions cannot be shown. Last Phase 0 item.
-- **Written and visual-connect round UIs.** The engine supports both; the screens are
-  Phase 4.
-- **Native video.** Phase 1 deliberately leaves video on an embedded Meet link, so that if
-  the app breaks you still have Meet and if Meet breaks you still have the app.
-- **Deployment.** Runs on localhost. Deliberately deferred until Phase 1 is proven.
+- **Run a real quiz.** The only thing standing between this and "Phase 1 done".
+- **Phase 2 — media pipeline.** Object storage, transcoding, client preload before a
+  round, a team-by-team "media loaded" grid, synced playback on a QM cue. Today media is
+  a file on disk served over HTTP, which is fine for an image and untested for video.
+- **Phase 3 — native video.** LiveKit, QM broadcast with selective unmute, team-private
+  audio rooms, a video grid in the console. This is the part that removes the second
+  browser window.
+- **Phase 5 — the rest of the polish.** Scoreboard animation, a QM audit log, a
+  spectator view.
+- **Hosting.** Deliberately deferred until a real quiz has been run. A tunnel is the
+  stand-in and it is enough.
+
+### Open rules
+
+`FORMAT_SPEC` §5 tracks the rules that were genuinely undecided. Three are answered and
+implemented — pouncers are out of the bounce, a connect dies after the last reveal, and
+staking is per question. Two remain assumptions: whether more than one written answer may
+be staked, and whether the QM should be able to make arbitrary mid-quiz adjustments.
 
 ### Test suites
 
 ```
-cd packages/engine && npm test    # 47 — the state machine
+cd packages/engine && npm test    # 60 — the state machine, every rule in FORMAT_SPEC
 cd packages/db     && npm test    # 21 — row-to-domain mapping
-cd packages/server && npm test    # 42 — API, projections, sockets, concurrency
-psql -d quizmaster -f packages/db/test/smoke.sql   # 31 — the schema enforces FORMAT_SPEC
+cd packages/server && npm test    # 65 — API, projections, sockets, access, concurrency
+cd packages/client && npm test    # 13 — the inline text formatter
+psql -d quizmaster -f packages/db/test/smoke.sql   # 35 — the schema enforces FORMAT_SPEC
 ```
+
+The server suite needs `DATABASE_URL` and runs against a real Postgres; it creates its own
+quizzes and deletes them afterwards, so it is safe against a database with real ones in it.

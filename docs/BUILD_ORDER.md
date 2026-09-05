@@ -36,8 +36,10 @@ you still have Meet, and if Meet breaks you still have the engine. Do not skip t
 - [x] Team client: question view, pounce box, shared team draft with typing indicators
 - [x] Public scoreboard view (`/scoreboard?quiz=…`)
 - [x] Undo (VOID_EVENT) wired to a single keystroke
+- [x] One port serving everything, so a tunnel exposes the whole app (`docs/RUNNING.md`)
+- [x] Access boundary: the authoring API is loopback-only until ADMIN_TOKEN is set
 
-**Done when:** you have hosted a real quiz on it.
+**Done when:** you have hosted a real quiz on it. **Still outstanding.**
 **Test this first:** kill wifi mid-pounce. It is the most likely live failure.
 
 ---
