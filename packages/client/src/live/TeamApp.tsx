@@ -254,10 +254,16 @@ function TeamScreen({ view, onLeave }: { view: TeamView; onLeave: () => void }) 
         </p>
       )}
 
-      <QuestionCard view={view} />
-      <PounceBox view={view} />
-      <DraftBox view={view} />
-      <RevealCard view={view} />
+      {view.written ? (
+        <WrittenRound view={view} />
+      ) : (
+        <>
+          <QuestionCard view={view} />
+          <PounceBox view={view} />
+          <DraftBox view={view} />
+          <RevealCard view={view} />
+        </>
+      )}
       <Scoreboard view={view} />
     </div>
   );
@@ -500,6 +506,127 @@ function Centre({ children }: { children: React.ReactNode }) {
       <div className="w-full max-w-sm rounded border border-neutral-200 bg-white p-6">
         {children}
       </div>
+    </div>
+  );
+}
+
+/**
+ * A written round, from a team's side — FORMAT_SPEC §2.2.
+ *
+ * Four questions are read out one at a time, then every box goes live at once
+ * and the team fills them in together. Staking is the interesting bit: +15 if
+ * right, −5 if wrong, instead of +10/0. It is declared per answer and locks
+ * when the QM closes the round, so the UI has to make "locked" obvious.
+ */
+function WrittenRound({ view }: { view: TeamView }) {
+  const written = view.written;
+  const send = useLive((s) => s.send);
+  const [drafts, setDrafts] = useState<Record<string, { text: string; staked: boolean }>>({});
+
+  if (!written) return null;
+
+  const answerFor = (questionId: string) => {
+    const saved = written.yourAnswers.find((a) => a.questionId === questionId);
+    return drafts[questionId] ?? { text: saved?.text ?? '', staked: saved?.staked ?? false };
+  };
+
+  const save = (questionId: string, next: { text: string; staked: boolean }) => {
+    setDrafts((d) => ({ ...d, [questionId]: next }));
+    send({ type: 'WRITTEN_ANSWER', questionId, text: next.text, staked: next.staked });
+  };
+
+  if (written.phase === 'SHOWING' || written.phase === 'IDLE') {
+    const shown = written.questions[0];
+    return (
+      <div className="mb-3 rounded border border-neutral-200 bg-white p-4">
+        <p className="mb-2 text-xs font-semibold tracking-wide text-neutral-500 uppercase">
+          Written round — question {written.shownIdx + 1}
+        </p>
+        {shown ? (
+          <>
+            <p className="text-lg whitespace-pre-wrap">{shown.text}</p>
+            {shown.media.map((m) =>
+              m.kind === 'IMAGE' ? (
+                <img key={m.id} src={m.url} alt="" className="mt-3 max-w-full rounded" />
+              ) : null,
+            )}
+          </>
+        ) : (
+          <p className="text-sm text-neutral-500">Waiting for the quizmaster.</p>
+        )}
+        <p className="mt-3 text-sm text-neutral-600">
+          Write it down. All four answer boxes open once every question has been read.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="mb-3 space-y-3">
+      <div className="rounded border border-neutral-200 bg-white p-3 text-sm">
+        {written.collecting ? (
+          <p>
+            All four answers, in any order. <strong>Stake</strong> one if you are
+            confident: <strong>+15</strong> if right, <strong>−5</strong> if wrong,
+            instead of +10 / 0. Any team member can type; the last edit wins.
+          </p>
+        ) : (
+          <p className="text-neutral-600">
+            Answers are locked. The quizmaster is grading them now.
+          </p>
+        )}
+      </div>
+
+      {written.questions.map((q) => {
+        const current = answerFor(q.id);
+        const saved = written.yourAnswers.find((a) => a.questionId === q.id);
+        return (
+          <div key={q.id} className="rounded border border-neutral-200 bg-white p-4">
+            <p className="mb-1 text-xs font-semibold tracking-wide text-neutral-500 uppercase">
+              Question {q.index + 1}
+            </p>
+            <p className="mb-2 whitespace-pre-wrap">{q.text}</p>
+
+            <textarea
+              className="w-full rounded border border-neutral-300 bg-white px-3 py-2 text-neutral-900"
+              rows={2}
+              value={current.text}
+              disabled={!written.collecting}
+              placeholder="Your answer"
+              onChange={(e) => setDrafts((d) => ({ ...d, [q.id]: { ...current, text: e.target.value } }))}
+              onBlur={() => save(q.id, current)}
+            />
+
+            <label className="mt-2 flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={current.staked}
+                disabled={!written.collecting}
+                onChange={(e) => save(q.id, { ...current, staked: e.target.checked })}
+              />
+              <span>
+                Stake this one <span className="text-neutral-500">(+15 / −5)</span>
+              </span>
+            </label>
+
+            {saved?.verdict && (
+              <p
+                className={`mt-2 text-sm font-semibold ${
+                  saved.verdict === 'CORRECT' ? 'text-green-700' : 'text-red-700'
+                }`}
+              >
+                {saved.verdict === 'CORRECT'
+                  ? saved.staked
+                    ? 'Correct — +15'
+                    : 'Correct — +10'
+                  : saved.staked
+                    ? 'Wrong — −5'
+                    : 'Wrong'}
+              </p>
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }

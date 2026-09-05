@@ -108,6 +108,13 @@ function QmJoin({ onJoined }: { onJoined: (s: StoredSession) => void }) {
  * the phase needs a per-team judgement rather than a single step.
  */
 function primaryAction(view: QmView): { label: string; action: Action } | null {
+  // Round type first. The phases share names across round types but the legal
+  // actions do not, and offering a DIRECT action in a WRITTEN round is how you
+  // get "PRESENT_QUESTION is not legal in phase WRITTEN round" — a button that
+  // cannot work is worse than no button.
+  if (view.round?.type === 'WRITTEN') return writtenPrimaryAction(view);
+  if (view.round?.type === 'VISUAL_CONNECT') return null;
+
   switch (view.phase) {
     case 'IDLE':
       return view.nextQuestion
@@ -128,6 +135,36 @@ function primaryAction(view: QmView): { label: string; action: Action } | null {
       return { label: 'Reveal answer', action: { type: 'REVEAL_ANSWER' } };
     case 'REVEALED':
       return { label: 'Next question', action: { type: 'NEXT_QUESTION' } };
+    default:
+      return null;
+  }
+}
+
+/**
+ * The written round — FORMAT_SPEC §2.2.
+ *
+ * Four questions shown one at a time, then every team answers all four at once,
+ * then the QM grades question by question across all teams.
+ */
+function writtenPrimaryAction(view: QmView): { label: string; action: Action } | null {
+  const written = view.written;
+  const total = written?.questions.length ?? 0;
+
+  switch (written?.phase) {
+    case undefined:
+    case 'IDLE':
+      return { label: 'Show question 1', action: { type: 'SHOW_WRITTEN_QUESTION', index: 0 } };
+    case 'SHOWING':
+      return written.shownIdx < total - 1
+        ? {
+            label: `Show question ${written.shownIdx + 2}`,
+            action: { type: 'SHOW_WRITTEN_QUESTION', index: written.shownIdx + 1 },
+          }
+        : { label: 'Open answering', action: { type: 'OPEN_COLLECTION' } };
+    case 'COLLECTING':
+      return { label: 'Close answering', action: { type: 'CLOSE_COLLECTION' } };
+    case 'EVALUATING':
+      return { label: 'Done grading', action: { type: 'FINISH_WRITTEN_EVALUATION' } };
     default:
       return null;
   }
@@ -229,11 +266,27 @@ function Console({ view, onLeave }: { view: QmView; onLeave: () => void }) {
       <div className="grid gap-4 p-4 lg:grid-cols-[1fr_22rem]">
         <div className="space-y-4">
           <NavigationPanel view={view} act={act} />
-          <QuestionPanel view={view} />
-          {view.phase === 'POUNCE_CLOSED' || view.phase === 'POUNCE_OPEN' || view.phase === 'POUNCE_FINAL_CALL' ? (
-            <PouncePanel view={view} act={act} />
-          ) : null}
-          {bouncing && <BouncePanel view={view} act={act} />}
+
+          {view.round?.type === 'WRITTEN' ? (
+            <WrittenPanel view={view} act={act} />
+          ) : view.round?.type === 'VISUAL_CONNECT' ? (
+            <Panel title="Long visual connect">
+              <p className="text-sm text-neutral-600">
+                This round type has no console yet — it is Phase 4 in the build
+                order. The engine supports it; the screen does not.
+              </p>
+            </Panel>
+          ) : (
+            <>
+              <QuestionPanel view={view} />
+              {view.phase === 'POUNCE_CLOSED' ||
+              view.phase === 'POUNCE_OPEN' ||
+              view.phase === 'POUNCE_FINAL_CALL' ? (
+                <PouncePanel view={view} act={act} />
+              ) : null}
+              {bouncing && <BouncePanel view={view} act={act} />}
+            </>
+          )}
         </div>
 
         <div className="space-y-4">
@@ -593,5 +646,171 @@ function PresencePanel({ view }: { view: QmView }) {
         ))}
       </ul>
     </Panel>
+  );
+}
+
+/**
+ * The written round console.
+ *
+ * Two surfaces in one panel, because the round has two distinct jobs:
+ * showing the questions, then grading a grid of answers.
+ *
+ * The grid is questions down, teams across, and it is graded question by
+ * question rather than team by team — that is the only way to be consistent
+ * about what counts as close enough, which is a judgement you make once per
+ * question and then apply (ARCHITECTURE §3).
+ */
+function WrittenPanel({ view, act }: { view: QmView; act: (a: Action) => void }) {
+  const written = view.written;
+  if (!written) {
+    return (
+      <Panel title="Written round">
+        <p className="text-sm text-neutral-600">Starting…</p>
+      </Panel>
+    );
+  }
+
+  const collecting = written.phase === 'COLLECTING';
+  const grading = written.phase === 'EVALUATING' || written.phase === 'REVEALED';
+
+  return (
+    <>
+      <Panel
+        title={`Written round — ${written.phase}`}
+        aside={
+          <span className="text-xs text-neutral-500">
+            +10 / 0, or +15 / −5 if staked
+          </span>
+        }
+      >
+        {/* Showing: one question at a time, so teams can write them down. */}
+        {written.phase === 'SHOWING' && (
+          <div>
+            <p className="mb-1 text-xs font-semibold uppercase text-neutral-500">
+              Showing question {written.shownIdx + 1} of {written.questions.length}
+            </p>
+            <p className="text-lg whitespace-pre-wrap">
+              {written.questions[written.shownIdx]?.text}
+            </p>
+            <p className="mt-2 rounded bg-amber-50 px-2 py-1 text-sm">
+              <span className="font-semibold">Answer: </span>
+              {written.questions[written.shownIdx]?.answerText || <em>not written yet</em>}
+            </p>
+          </div>
+        )}
+
+        {collecting && (
+          <p className="text-sm text-neutral-600">
+            All four boxes are live on every team's screen. Answers are hidden
+            from you until you close — same rule as a pounce, for the same reason.
+          </p>
+        )}
+
+        {/* Jump back to any question while still showing. */}
+        {(written.phase === 'SHOWING' || written.phase === 'IDLE') && (
+          <div className="mt-3 flex flex-wrap gap-2 border-t border-neutral-200 pt-3">
+            {written.questions.map((q) => (
+              <button
+                key={q.id}
+                onClick={() => act({ type: 'SHOW_WRITTEN_QUESTION', index: q.index })}
+                className={`rounded border px-3 py-1 text-sm ${
+                  q.index === written.shownIdx && written.phase === 'SHOWING'
+                    ? 'border-blue-600 bg-blue-50 font-semibold'
+                    : 'border-neutral-400'
+                }`}
+              >
+                Q{q.index + 1}
+              </button>
+            ))}
+          </div>
+        )}
+      </Panel>
+
+      {grading && (
+        <Panel title="Grading">
+          <div className="space-y-4">
+            {written.questions.map((q) => (
+              <div key={q.id}>
+                <p className="text-sm font-semibold">
+                  Q{q.index + 1}. {q.text}
+                </p>
+                <p className="mb-2 text-sm text-amber-800">
+                  Answer: {q.answerText || <em>not written</em>}
+                </p>
+                <ul className="space-y-1">
+                  {written.answers
+                    .filter((a) => a.questionId === q.id)
+                    .map((a) => (
+                      <li key={a.teamId} className="flex items-center gap-2 text-sm">
+                        <span className="w-24 shrink-0">{a.teamName}</span>
+                        <span className="flex-1">
+                          {a.text ? (
+                            <span className="whitespace-pre-wrap">{a.text}</span>
+                          ) : (
+                            <em className="text-neutral-400">no answer</em>
+                          )}
+                          {a.staked && (
+                            <span className="ml-2 rounded bg-amber-100 px-1 text-xs text-amber-800">
+                              staked
+                            </span>
+                          )}
+                        </span>
+                        {a.verdict ? (
+                          <span
+                            className={
+                              a.verdict === 'CORRECT' ? 'text-green-700' : 'text-red-700'
+                            }
+                          >
+                            {a.verdict === 'CORRECT'
+                              ? a.staked
+                                ? '+15'
+                                : '+10'
+                              : a.staked
+                                ? '−5'
+                                : '0'}
+                          </span>
+                        ) : (
+                          a.text !== null && (
+                            <span className="flex gap-1">
+                              <button
+                                onClick={() =>
+                                  act({
+                                    type: 'EVALUATE_WRITTEN',
+                                    teamId: a.teamId,
+                                    questionId: q.id,
+                                    verdict: 'CORRECT',
+                                    eventId: '',
+                                  })
+                                }
+                                className="rounded border border-green-500 px-2 py-0.5 text-green-700"
+                              >
+                                ✓
+                              </button>
+                              <button
+                                onClick={() =>
+                                  act({
+                                    type: 'EVALUATE_WRITTEN',
+                                    teamId: a.teamId,
+                                    questionId: q.id,
+                                    verdict: 'WRONG',
+                                    eventId: '',
+                                  })
+                                }
+                                className="rounded border border-red-400 px-2 py-0.5 text-red-700"
+                              >
+                                ✗
+                              </button>
+                            </span>
+                          )
+                        )}
+                      </li>
+                    ))}
+                </ul>
+              </div>
+            ))}
+          </div>
+        </Panel>
+      )}
+    </>
   );
 }

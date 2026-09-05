@@ -163,6 +163,26 @@ export async function registerWebSocket(app: FastifyInstance): Promise<void> {
                 return;
               }
 
+              case 'WRITTEN_ANSWER': {
+                if (conn.role !== 'TEAM' || !conn.teamId) {
+                  send({ type: 'ERROR', message: 'Only a team can answer.' });
+                  return;
+                }
+                // teamId from the session, never from the message.
+                await applyAction(
+                  room,
+                  {
+                    type: 'SUBMIT_WRITTEN',
+                    teamId: conn.teamId,
+                    questionId: message.questionId,
+                    text: message.text,
+                    staked: message.staked,
+                  },
+                  conn.displayName,
+                );
+                return;
+              }
+
               case 'DRAFT': {
                 if (conn.role !== 'TEAM' || !conn.teamId) return;
                 setDraft(room, conn.teamId, message.text, conn.displayName);

@@ -135,6 +135,34 @@ export interface TeamView {
 
   /** Populated only once the QM has revealed. Null at every other moment. */
   reveal: { text: string; media: ViewMedia[] } | null;
+
+  /** Present only during a WRITTEN round (FORMAT_SPEC §2.2). */
+  written: TeamWrittenView | null;
+}
+
+/**
+ * A written round, from a team's side.
+ *
+ * Four questions shown one at a time, then all four answer boxes live at once.
+ * Staking is declared at submission and locked when the round closes: +15/−5
+ * instead of +10/0.
+ */
+export interface TeamWrittenView {
+  phase: WrittenPhase;
+  /** Which question the QM is currently showing, during SHOWING. */
+  shownIdx: number;
+  /** Every question in the round; teams see them all once collection opens. */
+  questions: PublicQuestion[];
+  /** True while answers may still be changed. */
+  collecting: boolean;
+  /** This team's own answers. Never another team's. */
+  yourAnswers: {
+    questionId: string;
+    text: string;
+    staked: boolean;
+    /** Set only after the QM has graded, which is after the round closes. */
+    verdict: 'CORRECT' | 'WRONG' | null;
+  }[];
 }
 
 // ─── QM view ────────────────────────────────────────────────────────────────
@@ -219,6 +247,9 @@ export interface QmView {
 
   revealed: boolean;
 
+  /** Present only during a WRITTEN round (FORMAT_SPEC §2.2). */
+  written: QmWrittenView | null;
+
   /**
    * The question PRESENT_QUESTION should be called with next.
    *
@@ -246,6 +277,35 @@ export interface QmView {
   nextDirectTeamName: string | null;
 }
 
+/**
+ * A written round, from the QM's side.
+ *
+ * The evaluation surface is a grid — questions down, teams across — because
+ * grading one question across every team at once is the only way to be
+ * consistent about what counts as close enough (ARCHITECTURE §3).
+ */
+export interface QmWrittenView {
+  phase: WrittenPhase;
+  shownIdx: number;
+  questions: {
+    id: string;
+    index: number;
+    text: string;
+    media: ViewMedia[];
+    /** The QM's crib sheet. Never sent to a team. */
+    answerText: string;
+  }[];
+  /** One row per team per question, including teams that did not answer. */
+  answers: {
+    teamId: string;
+    teamName: string;
+    questionId: string;
+    text: string | null;
+    staked: boolean;
+    verdict: 'CORRECT' | 'WRONG' | null;
+  }[];
+}
+
 // ─── Scoreboard view ────────────────────────────────────────────────────────
 
 export interface ScoreboardView {
@@ -269,6 +329,8 @@ export type ClientMessage =
   | { type: 'ACTION'; action: Action }
   /** A team submitting its pounce. Separate from ACTION because teams may send it. */
   | { type: 'POUNCE'; text: string }
+  /** A team's written-round answer, with its stake. Teams may send this. */
+  | { type: 'WRITTEN_ANSWER'; questionId: string; text: string; staked: boolean }
   /** Shared-draft editing. Room state, never engine state. */
   | { type: 'DRAFT'; text: string }
   | { type: 'TYPING' }

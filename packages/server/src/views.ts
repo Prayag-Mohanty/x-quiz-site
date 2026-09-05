@@ -34,6 +34,8 @@ import {
 } from '@quizmaster/engine';
 import type {
   PublicQuestion,
+  QmWrittenView,
+  TeamWrittenView,
   PublicStanding,
   QmPounce,
   QmStanding,
@@ -130,6 +132,91 @@ function publicQuestion(state: QuizState): PublicQuestion | null {
  * the QM decides — but a self-reordering list also quietly implies a ranking
  * the format does not claim to compute.
  */
+/**
+ * The whole round's questions, for a written round.
+ *
+ * Written rounds show four questions and then collect all four answers at once,
+ * so unlike a DIRECT round there is no single "current" question — teams need
+ * them all in front of them once collection opens.
+ */
+function writtenQuestions(state: QuizState): PublicQuestion[] {
+  const round = currentRound(state);
+  if (!round) return [];
+  return round.questions.map((q, i) => ({
+    id: q.id,
+    index: i,
+    total: round.questions.length,
+    text: q.text,
+    media: toViewMedia(q.media),
+    partCount: q.parts.length,
+  }));
+}
+
+function buildTeamWritten(state: QuizState, teamId: TeamId): TeamWrittenView | null {
+  const active = state.active;
+  if (!active || active.kind !== 'WRITTEN') return null;
+  return {
+    phase: active.phase,
+    shownIdx: active.shownIdx,
+    // Before collection opens, only the question being shown is public.
+    questions:
+      active.phase === 'SHOWING'
+        ? writtenQuestions(state).filter((q) => q.index === active.shownIdx)
+        : writtenQuestions(state),
+    collecting: active.phase === 'COLLECTING',
+    // Own answers only. Another team's written answer is as private as a pounce.
+    yourAnswers: active.answers
+      .filter((a) => a.teamId === teamId)
+      .map((a) => ({
+        questionId: a.questionId,
+        text: a.text,
+        staked: a.staked,
+        verdict: a.verdict ?? null,
+      })),
+  };
+}
+
+function buildQmWritten(state: QuizState): QmWrittenView | null {
+  const active = state.active;
+  if (!active || active.kind !== 'WRITTEN') return null;
+  const round = currentRound(state);
+  const teamName = (id: TeamId) => state.teams.find((t) => t.id === id)?.name ?? 'Unknown';
+
+  // A row per team per question, including blanks, so the grading grid has no
+  // holes and a team that answered nothing is visibly a team that answered
+  // nothing rather than a missing row.
+  const answers: QmWrittenView['answers'] = [];
+  for (const question of round?.questions ?? []) {
+    for (const team of state.teams) {
+      const given = active.answers.find(
+        (a) => a.teamId === team.id && a.questionId === question.id,
+      );
+      answers.push({
+        teamId: team.id,
+        teamName: teamName(team.id),
+        questionId: question.id,
+        // Withheld while teams are still typing, exactly as pounces are.
+        text: active.phase === 'COLLECTING' ? null : (given?.text ?? null),
+        staked: given?.staked ?? false,
+        verdict: given?.verdict ?? null,
+      });
+    }
+  }
+
+  return {
+    phase: active.phase,
+    shownIdx: active.shownIdx,
+    questions: (round?.questions ?? []).map((q, i) => ({
+      id: q.id,
+      index: i,
+      text: q.text,
+      media: toViewMedia(q.media),
+      answerText: q.answerText,
+    })),
+    answers,
+  };
+}
+
 function publicStandings(state: QuizState): PublicStanding[] {
   const seatOf = new Map(state.teams.map((t, i) => [t.id, i]));
   return standings(state)
@@ -225,6 +312,8 @@ export function buildTeamView(
       revealed && question
         ? { text: question.answerText, media: toViewMedia(question.answerMedia) }
         : null,
+
+    written: buildTeamWritten(state, viewer.teamId),
   };
 }
 
@@ -344,6 +433,8 @@ export function buildQmView(state: QuizState, ctx: RoomContext): QmView {
     standings: qmStandings,
     recent,
     revealed: active?.phase === 'REVEALED',
+
+    written: buildQmWritten(state),
 
     // What to present next. Null while a question is still in play.
     nextQuestion:
