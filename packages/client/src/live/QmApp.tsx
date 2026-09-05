@@ -368,16 +368,18 @@ function Console({
             Skip pounce → bounce
           </button>
         )}
-        {/* Undoing a MOVE, which is the mistake with no ledger entry behind it
-            and therefore the one "Undo last" cannot fix. */}
-        {canRewind && (
+        {/* During a bounce this lives beside Correct/Wrong, in BouncePanel. A
+            DEAD question has no bounce panel — the buttons there are all
+            illegal now — so the one case that has nowhere else to go stays
+            here, next to Reveal answer, which is the other thing you might
+            mean to press. */}
+        {canRewind && view.phase === 'DEAD' && (
           <button
             onClick={() => act({ type: 'REWIND_BOUNCE' })}
             className="rounded border border-neutral-400 px-3 py-2 text-sm"
-            title="Put the question back to the previous team. Points already awarded stay awarded."
+            title="Bring the question back to life on the last team. Points already awarded stay awarded."
           >
-            {view.phase === 'DEAD' ? 'Un-kill — back to' : 'Back to'}{' '}
-            {previousBounceTeam(view) ?? 'previous team'}{' '}
+            Un-kill — back to {previousBounceTeam(view) ?? 'previous team'}{' '}
             <span className="opacity-60">b</span>
           </button>
         )}
@@ -409,7 +411,7 @@ function Console({
               view.phase === 'POUNCE_FINAL_CALL' ? (
                 <PouncePanel view={view} act={act} />
               ) : null}
-              {bouncing && <BouncePanel view={view} act={act} />}
+              {bouncing && <BouncePanel view={view} act={act} canRewind={canRewind} />}
             </>
           )}
         </div>
@@ -642,7 +644,15 @@ function PouncePanel({ view, act }: { view: QmView; act: (a: Action) => void }) 
  * the split you authored — so a 3+3+4 question offers +3, +3, +4 and you click
  * what they got. Recorded immediately, published at the reveal.
  */
-function BouncePanel({ view, act }: { view: QmView; act: (a: Action) => void }) {
+function BouncePanel({
+  view,
+  act,
+  canRewind,
+}: {
+  view: QmView;
+  act: (a: Action) => void;
+  canRewind: boolean;
+}) {
   const parts = view.answer?.parts ?? [];
   const multiPart = parts.length > 1;
 
@@ -664,6 +674,18 @@ function BouncePanel({ view, act }: { view: QmView; act: (a: Action) => void }) 
         >
           Wrong / pass <span className="opacity-60">n</span>
         </button>
+        {/* Beside the button that causes the mistake, because that is where you
+            are already looking when you realise you made it. */}
+        {canRewind && (
+          <button
+            onClick={() => act({ type: 'REWIND_BOUNCE' })}
+            className="rounded border border-neutral-400 px-4 py-2 text-neutral-700"
+            title="Put the question back to the previous team. Points already awarded stay awarded."
+          >
+            ← Back to {previousBounceTeam(view) ?? 'previous team'}{' '}
+            <span className="opacity-60">b</span>
+          </button>
+        )}
       </div>
 
       {multiPart && (
