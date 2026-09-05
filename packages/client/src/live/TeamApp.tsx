@@ -248,11 +248,7 @@ function TeamScreen({ view, onLeave }: { view: TeamView; onLeave: () => void }) 
           </p>
         </div>
       )}
-      {view.bounce.active && !view.bounce.onYou && (
-        <p className="mb-3 text-sm text-neutral-600">
-          Bounce is with <strong>{view.bounce.onTeamName}</strong>.
-        </p>
-      )}
+      <TeamBounceOrder view={view} />
 
       {view.written ? (
         <WrittenRound view={view} />
@@ -535,17 +531,21 @@ function WrittenRound({ view }: { view: TeamView }) {
     send({ type: 'WRITTEN_ANSWER', questionId, text: next.text, staked: next.staked });
   };
 
-  if (written.phase === 'SHOWING' || written.phase === 'IDLE') {
-    const shown = written.questions[0];
-    return (
-      <div className="mb-3 rounded border border-neutral-200 bg-white p-4">
-        <p className="mb-2 text-xs font-semibold tracking-wide text-neutral-500 uppercase">
-          Written round — question {written.shownIdx + 1}
+  const open = written.collecting;
+
+  return (
+    <div className="mb-3 space-y-3">
+      {/* The question being read out. This is the part that changes. */}
+      <div className="rounded border-2 border-neutral-300 bg-white p-4">
+        <p className="mb-1 text-xs font-semibold tracking-wide text-neutral-500 uppercase">
+          {written.currentQuestion
+            ? `Question ${written.currentQuestion.index + 1}`
+            : 'Written round'}
         </p>
-        {shown ? (
+        {written.currentQuestion ? (
           <>
-            <p className="text-lg whitespace-pre-wrap">{shown.text}</p>
-            {shown.media.map((m) =>
+            <p className="text-lg whitespace-pre-wrap">{written.currentQuestion.text}</p>
+            {written.currentQuestion.media.map((m) =>
               m.kind === 'IMAGE' ? (
                 <img key={m.id} src={m.url} alt="" className="mt-3 max-w-full rounded" />
               ) : null,
@@ -554,21 +554,15 @@ function WrittenRound({ view }: { view: TeamView }) {
         ) : (
           <p className="text-sm text-neutral-500">Waiting for the quizmaster.</p>
         )}
-        <p className="mt-3 text-sm text-neutral-600">
-          Write it down. All four answer boxes open once every question has been read.
-        </p>
       </div>
-    );
-  }
 
-  return (
-    <div className="mb-3 space-y-3">
       <div className="rounded border border-neutral-200 bg-white p-3 text-sm">
-        {written.collecting ? (
+        {open ? (
           <p>
-            All four answers, in any order. <strong>Stake</strong> one if you are
-            confident: <strong>+15</strong> if right, <strong>−5</strong> if wrong,
-            instead of +10 / 0. Any team member can type; the last edit wins.
+            Answer any of them at any time — the boxes below stay put as the
+            questions change. <strong>Stake</strong> one if you are confident:
+            <strong> +15</strong> if right, <strong>−5</strong> if wrong, instead
+            of +10 / 0. Any team member can type; the last edit wins.
           </p>
         ) : (
           <p className="text-neutral-600">
@@ -577,23 +571,35 @@ function WrittenRound({ view }: { view: TeamView }) {
         )}
       </div>
 
+      {/* The answer boxes. These do NOT change as the questions do. */}
       {written.questions.map((q) => {
         const current = answerFor(q.id);
         const saved = written.yourAnswers.find((a) => a.questionId === q.id);
+        const isCurrent = written.currentQuestion?.id === q.id;
         return (
-          <div key={q.id} className="rounded border border-neutral-200 bg-white p-4">
-            <p className="mb-1 text-xs font-semibold tracking-wide text-neutral-500 uppercase">
-              Question {q.index + 1}
-            </p>
-            <p className="mb-2 whitespace-pre-wrap">{q.text}</p>
+          <div
+            key={q.id}
+            className={`rounded border bg-white p-4 ${
+              isCurrent ? 'border-neutral-400' : 'border-neutral-200'
+            }`}
+          >
+            <div className="mb-1 flex items-baseline justify-between">
+              <p className="text-xs font-semibold tracking-wide text-neutral-500 uppercase">
+                Answer {q.index + 1}
+              </p>
+              {isCurrent && <span className="text-xs text-neutral-500">being read now</span>}
+            </div>
+            <p className="mb-2 text-sm text-neutral-600">{q.text}</p>
 
             <textarea
               className="w-full rounded border border-neutral-300 bg-white px-3 py-2 text-neutral-900"
               rows={2}
               value={current.text}
-              disabled={!written.collecting}
+              disabled={!open}
               placeholder="Your answer"
-              onChange={(e) => setDrafts((d) => ({ ...d, [q.id]: { ...current, text: e.target.value } }))}
+              onChange={(e) =>
+                setDrafts((d) => ({ ...d, [q.id]: { ...current, text: e.target.value } }))
+              }
               onBlur={() => save(q.id, current)}
             />
 
@@ -601,7 +607,7 @@ function WrittenRound({ view }: { view: TeamView }) {
               <input
                 type="checkbox"
                 checked={current.staked}
-                disabled={!written.collecting}
+                disabled={!open}
                 onChange={(e) => save(q.id, { ...current, staked: e.target.checked })}
               />
               <span>
@@ -627,6 +633,59 @@ function WrittenRound({ view }: { view: TeamView }) {
           </div>
         );
       })}
+
+      {written.questions.length === 0 && (
+        <p className="text-sm text-neutral-500">
+          Answer boxes appear as the quizmaster reads each question.
+        </p>
+      )}
+    </div>
+  );
+}
+
+/**
+ * The bounce order, for teams.
+ *
+ * Nothing here is secret: the order is the seating order and who pounced is
+ * announced as soon as the window closes. Teams need it for the same reason the
+ * QM does — knowing your turn is two away is the difference between being ready
+ * and being caught out. Horizontal, because it is a circle being walked, not a
+ * ranking.
+ */
+function TeamBounceOrder({ view }: { view: TeamView }) {
+  if (!view.bounce.active || view.bounce.order.length === 0) return null;
+  return (
+    <div className="mb-3 rounded border border-neutral-200 bg-white p-3">
+      <p className="mb-2 text-xs font-semibold tracking-wide text-neutral-500 uppercase">
+        Bounce order
+      </p>
+      <ol className="flex flex-wrap gap-2">
+        {view.bounce.order.map((t) => {
+          const you = t.teamId === view.you.teamId;
+          return (
+            <li
+              key={t.teamId}
+              className={`flex flex-col rounded border px-2 py-1 text-sm ${
+                t.current
+                  ? 'border-green-600 bg-green-50 font-semibold'
+                  : t.spent
+                    ? 'border-neutral-200 bg-neutral-50 text-neutral-400'
+                    : t.offered
+                      ? 'border-neutral-200 text-neutral-400'
+                      : 'border-neutral-300'
+              }`}
+            >
+              <span className={t.spent || t.offered ? 'line-through' : ''}>
+                {t.name}
+                {you && <span className="ml-1 text-xs text-blue-700">you</span>}
+              </span>
+              <span className="text-xs">
+                {t.current ? 'answering' : t.spent ? 'pounced' : t.offered ? 'passed' : ' '}
+              </span>
+            </li>
+          );
+        })}
+      </ol>
     </div>
   );
 }

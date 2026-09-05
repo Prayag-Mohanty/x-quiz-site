@@ -113,3 +113,76 @@ describe('navigating between questions and rounds', () => {
     assert.equal(moved.ledger[0]?.status, 'APPLIED');
   });
 });
+
+/**
+ * Getting out of a finished round.
+ *
+ * A written round ends at REVEALED with `active` still set, and every way out
+ * used to refuse — the QM was simply stuck. A revealed question or round is
+ * over; only an unfinished one should block navigation.
+ */
+describe('leaving a finished round', () => {
+  const writtenThenDirect: Round[] = [
+    {
+      id: 'w1',
+      type: 'WRITTEN',
+      title: 'Written',
+      questions: [simpleQuestion('w-q1'), simpleQuestion('w-q2')],
+    },
+    {
+      id: 'r2',
+      type: 'DIRECT',
+      title: 'Round 2',
+      direction: 'CW',
+      questions: [simpleQuestion('q1')],
+    },
+  ];
+
+  test('a written round can be left once it has been graded', () => {
+    const s = run(makeState({ rounds: writtenThenDirect }), [
+      { type: 'SHOW_WRITTEN_QUESTION', index: 0 },
+      { type: 'CLOSE_COLLECTION' },
+      { type: 'FINISH_WRITTEN_EVALUATION' },
+    ]);
+    assert.equal(s.active?.phase, 'REVEALED');
+
+    const moved = reduce(s, { type: 'START_ROUND', roundIdx: 1 });
+    assert.equal(moved.roundIdx, 1);
+    assert.equal(moved.active, null, 'the finished round is cleared');
+  });
+
+  test('an unfinished round still blocks navigation', () => {
+    const s = run(makeState({ rounds: writtenThenDirect }), [
+      { type: 'SHOW_WRITTEN_QUESTION', index: 0 },
+    ]);
+    assert.throws(() => reduce(s, { type: 'START_ROUND', roundIdx: 1 }), /not legal/);
+  });
+
+  test('teams may answer from the moment the round starts', () => {
+    // The questions are read one at a time; a team that has the first one
+    // should not have to wait for the fourth to write it down.
+    const s = run(makeState({ rounds: writtenThenDirect }), [
+      { type: 'SHOW_WRITTEN_QUESTION', index: 0 },
+      { type: 'SUBMIT_WRITTEN', teamId: 't1', questionId: 'w-q1', text: 'early', staked: false },
+    ]);
+    assert.equal(s.active?.kind === 'WRITTEN' && s.active.answers.length, 1);
+  });
+
+  test('answers are refused once the QM closes the boxes', () => {
+    const s = run(makeState({ rounds: writtenThenDirect }), [
+      { type: 'SHOW_WRITTEN_QUESTION', index: 0 },
+      { type: 'CLOSE_COLLECTION' },
+    ]);
+    assert.throws(
+      () =>
+        reduce(s, {
+          type: 'SUBMIT_WRITTEN',
+          teamId: 't1',
+          questionId: 'w-q1',
+          text: 'too late',
+          staked: false,
+        }),
+      /not legal/,
+    );
+  });
+});

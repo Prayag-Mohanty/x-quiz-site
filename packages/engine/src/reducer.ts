@@ -107,6 +107,11 @@ function nextBounceTeamIdx(
   return null;
 }
 
+/** Nothing in play, or the thing in play has been revealed and is over. */
+function isFinished(state: QuizState): boolean {
+  return state.active === null || state.active.phase === 'REVEALED';
+}
+
 function append(state: QuizState, event: ScoreEvent): ScoreEvent[] {
   return [...state.ledger, event];
 }
@@ -593,7 +598,11 @@ function reduceWritten(state: QuizState, action: Action): QuizState {
 
     case 'SUBMIT_WRITTEN': {
       const active = requireWritten(state);
-      if (active.phase !== 'COLLECTING') {
+      // Answerable from the start of the round until the QM closes it. The
+      // questions are read out one at a time, but a team that has the first one
+      // should be able to write it down while the second is being read
+      // (FORMAT_SPEC §2.2).
+      if (active.phase !== 'SHOWING' && active.phase !== 'COLLECTING') {
         throw new IllegalTransition(action.type, active.phase);
       }
       if (!state.rules.multipleStakesAllowed && action.staked) {
@@ -624,7 +633,9 @@ function reduceWritten(state: QuizState, action: Action): QuizState {
 
     case 'CLOSE_COLLECTION': {
       const active = requireWritten(state);
-      if (active.phase !== 'COLLECTING') {
+      // From SHOWING too: if teams have been answering throughout, there is
+      // nothing to "open" and the QM just closes the boxes when time is up.
+      if (active.phase !== 'SHOWING' && active.phase !== 'COLLECTING') {
         throw new IllegalTransition(action.type, active.phase);
       }
       // Stakes lock here.
@@ -723,7 +734,10 @@ export function reduce(state: QuizState, action: Action): QuizState {
     }
 
     case 'START_ROUND': {
-      if (state.active !== null) {
+      // A REVEALED question or round is over; only an unfinished one blocks
+      // navigation. Without this a written round is a dead end: it ends at
+      // REVEALED with `active` still set, and every way out refuses.
+      if (!isFinished(state)) {
         throw new IllegalTransition(action.type, 'a question is still active');
       }
       if (action.roundIdx < 0 || action.roundIdx >= state.rounds.length) {
@@ -733,7 +747,7 @@ export function reduce(state: QuizState, action: Action): QuizState {
     }
 
     case 'GO_TO_QUESTION': {
-      if (state.active !== null) {
+      if (!isFinished(state)) {
         throw new IllegalTransition(action.type, 'a question is still active');
       }
       const round = currentRound(state);
@@ -744,7 +758,7 @@ export function reduce(state: QuizState, action: Action): QuizState {
       }
       // Rotation is untouched: who receives the next direct question follows
       // from what has been PLAYED, not from what the QM is looking at.
-      return { ...state, questionIdx: action.index };
+      return { ...state, questionIdx: action.index, active: null };
     }
 
     default:

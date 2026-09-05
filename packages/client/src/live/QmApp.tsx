@@ -165,6 +165,14 @@ function writtenPrimaryAction(view: QmView): { label: string; action: Action } |
       return { label: 'Close answering', action: { type: 'CLOSE_COLLECTION' } };
     case 'EVALUATING':
       return { label: 'Done grading', action: { type: 'FINISH_WRITTEN_EVALUATION' } };
+    case 'REVEALED': {
+      // The round is done. Offer the next one rather than leaving the QM to
+      // find the dropdown.
+      const next = (view.round?.index ?? 0) + 1;
+      return next < view.rounds.length
+        ? { label: `Start ${view.rounds[next]?.title ?? 'next round'}`, action: { type: 'START_ROUND', roundIdx: next } }
+        : null;
+    }
     default:
       return null;
   }
@@ -267,6 +275,8 @@ function Console({ view, onLeave }: { view: QmView; onLeave: () => void }) {
         <div className="space-y-4">
           <NavigationPanel view={view} act={act} />
 
+          <BounceOrder view={view} />
+
           {view.round?.type === 'WRITTEN' ? (
             <WrittenPanel view={view} act={act} />
           ) : view.round?.type === 'VISUAL_CONNECT' ? (
@@ -290,7 +300,6 @@ function Console({ view, onLeave }: { view: QmView; onLeave: () => void }) {
         </div>
 
         <div className="space-y-4">
-          <BounceOrder view={view} />
           <ScorePanel view={view} />
           <PresencePanel view={view} />
         </div>
@@ -308,7 +317,9 @@ function Console({ view, onLeave }: { view: QmView; onLeave: () => void }) {
  * awarded stay awarded, and undo is how you take one back.
  */
 function NavigationPanel({ view, act }: { view: QmView; act: (a: Action) => void }) {
-  const between = view.phase === 'IDLE';
+  // A REVEALED question or round is over — the engine allows navigating away
+  // from it, so the panel must too. This is what left the written round frozen.
+  const between = view.phase === 'IDLE' || view.phase === 'REVEALED';
   const roundIdx = view.round?.index ?? 0;
   // The real index, not one derived from nextQuestion — that is null once the
   // round is finished, and falling back to 0 would claim you are at the start.
@@ -558,29 +569,51 @@ function BouncePanel({ view, act }: { view: QmView; act: (a: Action) => void }) 
   );
 }
 
-/** Always visible, current team marked. Wrap-around is where QMs lose track. */
+/**
+ * The bounce order, laid out as the circle it is.
+ *
+ * Horizontal and left-to-right, next to the question rather than off in a
+ * sidebar: during a bounce you are reading the question and tracking whose turn
+ * it is at the same time, and wrap-around is exactly where a QM loses the
+ * thread (ARCHITECTURE §6).
+ */
 function BounceOrder({ view }: { view: QmView }) {
   if (view.bounce.order.length === 0) return null;
   return (
     <Panel title="Bounce order">
-      <ol className="space-y-1 text-sm">
-        {view.bounce.order.map((t) => (
+      <ol className="flex flex-wrap items-stretch gap-2">
+        {view.bounce.order.map((t, i) => (
           <li
             key={t.teamId}
-            className={`flex justify-between rounded px-2 py-1 ${
+            className={`flex min-w-24 flex-col rounded border px-3 py-2 ${
               t.current
-                ? 'bg-blue-100 font-semibold'
+                ? 'border-blue-600 bg-blue-50'
                 : t.spent
-                  ? 'text-neutral-400'
+                  ? 'border-neutral-200 bg-neutral-50 text-neutral-400'
                   : t.offered
-                    ? 'text-neutral-400 line-through'
-                    : ''
+                    ? 'border-neutral-200 text-neutral-400'
+                    : 'border-neutral-300'
             }`}
           >
-            <span className={t.spent ? 'line-through' : ''}>{t.name}</span>
-            {t.current && <span className="text-xs">now</span>}
-            {/* Pounced, so skipped — say why rather than silently passing over. */}
-            {!t.current && t.spent && <span className="text-xs">pounced</span>}
+            <span className="font-mono text-xs text-neutral-400">{i + 1}</span>
+            <span
+              className={`text-sm ${t.current ? 'font-semibold' : ''} ${
+                t.spent || t.offered ? 'line-through' : ''
+              }`}
+            >
+              {t.name}
+            </span>
+            <span className="text-xs">
+              {t.current ? (
+                <span className="font-semibold text-blue-700">now</span>
+              ) : t.spent ? (
+                'pounced'
+              ) : t.offered ? (
+                'passed'
+              ) : (
+                ' '
+              )}
+            </span>
           </li>
         ))}
       </ol>

@@ -159,11 +159,14 @@ function buildTeamWritten(state: QuizState, teamId: TeamId): TeamWrittenView | n
     phase: active.phase,
     shownIdx: active.shownIdx,
     // Before collection opens, only the question being shown is public.
-    questions:
-      active.phase === 'SHOWING'
-        ? writtenQuestions(state).filter((q) => q.index === active.shownIdx)
-        : writtenQuestions(state),
-    collecting: active.phase === 'COLLECTING',
+    // Every question the QM has reached, so the answer boxes below can stay put
+    // while the question above them changes.
+    questions: writtenQuestions(state).filter(
+      (q) => active.phase !== 'SHOWING' || q.index <= active.shownIdx,
+    ),
+    currentQuestion:
+      writtenQuestions(state).find((q) => q.index === active.shownIdx) ?? null,
+    collecting: active.phase === 'SHOWING' || active.phase === 'COLLECTING',
     // Own answers only. Another team's written answer is as private as a pounce.
     yourAnswers: active.answers
       .filter((a) => a.teamId === teamId)
@@ -215,6 +218,35 @@ function buildQmWritten(state: QuizState): QmWrittenView | null {
     })),
     answers,
   };
+}
+
+/**
+ * The bounce circle, in order.
+ *
+ * Identical for the QM and for teams: the order is the seating order and who
+ * pounced is public once the window closes, so there is nothing here to
+ * withhold. Built once so the two views cannot drift apart.
+ */
+function bounceOrderFor(state: QuizState): TeamView['bounce']['order'] {
+  const active = state.active;
+  const round = currentRound(state);
+  if (!active || active.kind !== 'DIRECT' || !round) return [];
+  return bounceOrder(active.directTeamIdx, round.direction ?? 'CW', state.teams.length).map(
+    (idx) => {
+      const team = state.teams[idx];
+      const spent =
+        !state.rules.pouncersMayBounce &&
+        Boolean(team) &&
+        active.pounces.some((p) => p.teamId === team?.id);
+      return {
+        teamId: team?.id ?? '',
+        name: team?.name ?? '',
+        offered: team ? active.bounceOffered.includes(team.id) : false,
+        current: idx === active.bounceTeamIdx,
+        spent,
+      };
+    },
+  );
 }
 
 function publicStandings(state: QuizState): PublicStanding[] {
@@ -306,6 +338,7 @@ export function buildTeamView(
       active: bounceActive,
       onTeamName: onTeam?.name ?? null,
       onYou: onTeam?.id === viewer.teamId,
+      order: bounceOrderFor(state),
     },
 
     draft: ctx.drafts.get(viewer.teamId) ?? EMPTY_DRAFT,
@@ -370,25 +403,7 @@ export function buildQmView(state: QuizState, ctx: RoomContext): QmView {
 
   // The bounce order, always visible. Under wrap-around and direction changes a
   // QM loses track, and the screen should never let that happen (ARCHITECTURE §6).
-  const order: QmView['bounce']['order'] =
-    active?.kind === 'DIRECT' && round
-      ? bounceOrder(active.directTeamIdx, round.direction ?? 'CW', state.teams.length).map(
-          (idx) => {
-            const team = state.teams[idx];
-            const pounced =
-              !state.rules.pouncersMayBounce &&
-              Boolean(team) &&
-              active.pounces.some((p) => p.teamId === team?.id);
-            return {
-              teamId: team?.id ?? '',
-              name: team?.name ?? '',
-              offered: team ? active.bounceOffered.includes(team.id) : false,
-              current: idx === active.bounceTeamIdx,
-              spent: pounced,
-            };
-          },
-        )
-      : [];
+  const order: QmView['bounce']['order'] = bounceOrderFor(state);
 
   const qmStandings: QmStanding[] = publicStandings(state).map((s) => {
     const provisional = provisionalScore(state.ledger, s.teamId);

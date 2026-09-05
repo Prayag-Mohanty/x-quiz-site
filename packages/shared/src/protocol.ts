@@ -126,6 +126,15 @@ export interface TeamView {
     onTeamName: string | null;
     /** True when it is this team's turn to answer. */
     onYou: boolean;
+    /**
+     * The whole circle, same as the QM sees.
+     *
+     * Public by nature: the order is the seating order, and who has pounced is
+     * announced the moment the window closes. Teams need it to know when their
+     * turn is coming — which is the difference between being ready and being
+     * caught out.
+     */
+    order: { teamId: string; name: string; offered: boolean; current: boolean; spent: boolean }[];
   };
 
   draft: TeamDraft;
@@ -153,8 +162,16 @@ export interface TeamWrittenView {
   shownIdx: number;
   /** Every question in the round; teams see them all once collection opens. */
   questions: PublicQuestion[];
-  /** True while answers may still be changed. */
+  /**
+   * True while answers may still be changed.
+   *
+   * Open from the moment the round starts, not only once every question has
+   * been read: a team that has the first answer should be able to write it
+   * down while the second is being read out.
+   */
   collecting: boolean;
+  /** The question the QM is reading out right now, if any. */
+  currentQuestion: PublicQuestion | null;
   /** This team's own answers. Never another team's. */
   yourAnswers: {
     questionId: string;
