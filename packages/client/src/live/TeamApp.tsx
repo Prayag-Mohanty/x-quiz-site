@@ -24,7 +24,13 @@ import {
 } from './socket.js';
 
 export function TeamApp() {
-  const [session, setSession] = useState<StoredSession | null>(() => loadSession());
+  // A QM session in the same browser is not a team session. Without the role
+  // check this screen tries to join the quiz as the quizmaster and sits on
+  // "Connecting…" forever, which looks like the server being down.
+  const [session, setSession] = useState<StoredSession | null>(() => {
+    const stored = loadSession();
+    return stored?.role === 'TEAM' ? stored : null;
+  });
   const connect = useLive((s) => s.connect);
   const disconnect = useLive((s) => s.disconnect);
   const view = useLive((s) => s.view);
@@ -248,6 +254,7 @@ function TeamScreen({ view, onLeave }: { view: TeamView; onLeave: () => void }) 
         <WrittenRound view={view} />
       ) : (
         <>
+          <ConnectStrip view={view} />
           <QuestionCard view={view} />
           <PounceBox view={view} />
           <DraftBox view={view} />
@@ -314,8 +321,22 @@ function PounceBox({ view }: { view: TeamView }) {
 
   if (view.pounce.spent) {
     return (
-      <div className="mb-3 rounded border border-neutral-200 bg-white p-4 text-sm text-neutral-600">
-        You have already pounced on this connect — one per team, whatever the outcome.
+      <div className="mb-3 rounded border border-neutral-200 bg-white p-4 text-sm">
+        <p className="text-neutral-600">
+          You have already pounced on this connect — one per team, whatever the
+          outcome.
+        </p>
+        {/* Your own pounce may have been two reveals ago, and the round clears
+            it from play each time it advances. This is where you find out. */}
+        {view.pounce.yourVerdict && (
+          <p
+            className={`mt-2 font-semibold ${
+              view.pounce.yourVerdict === 'CORRECT' ? 'text-green-700' : 'text-red-700'
+            }`}
+          >
+            {view.pounce.yourVerdict === 'CORRECT' ? 'You had it.' : 'Not this time.'}
+          </p>
+        )}
       </div>
     );
   }
@@ -366,7 +387,14 @@ function PounceBox({ view }: { view: TeamView }) {
         {view.pounce.finalCall ? 'Final call — pounce now' : 'Pounce open'}
       </p>
       <p className="mb-2 text-xs text-neutral-600">
-        +10 if right, −5 if wrong. One per team. Nobody else sees what you write.
+        {view.connect
+          ? `+${view.connect.value.correct} if right, ${
+              view.connect.value.wrong === 0
+                ? 'nothing lost'
+                : `−${Math.abs(view.connect.value.wrong)} if wrong`
+            }. One per team for the whole connect — this is your only shot at it.`
+          : '+10 if right, −5 if wrong. One per team.'}{' '}
+        Nobody else sees what you write.
       </p>
       <textarea
         className="w-full rounded border border-neutral-300 bg-white px-3 py-2 text-neutral-900"
@@ -765,6 +793,58 @@ function WrittenRound({ view }: { view: TeamView }) {
           </ul>
         </div>
       )}
+    </div>
+  );
+}
+
+/**
+ * Where the connect is, and what it is worth right now — FORMAT_SPEC §2.3.
+ *
+ * The whole round is one decision made over and over: is the connection worth
+ * 20 to us yet, or do we wait for an image that makes it worth 15? A team doing
+ * that from memory gets it wrong, so the ladder is on the screen with the
+ * current rung marked and the spent ones struck through.
+ *
+ * None of this is secret. The decay is a rule and the room is told it out loud.
+ */
+function ConnectStrip({ view }: { view: TeamView }) {
+  const connect = view.connect;
+  if (!connect) return null;
+
+  return (
+    <div className="mb-3 rounded border border-neutral-300 bg-white p-3">
+      <div className="mb-2 flex items-baseline justify-between gap-2">
+        <p className="text-xs font-semibold tracking-wide text-neutral-500 uppercase">
+          Reveal {connect.stageIdx + 1} of {connect.stageCount}
+        </p>
+        <p className="font-mono text-sm">
+          <span className="text-green-700">+{connect.value.correct}</span>
+          <span className="mx-1 text-neutral-400">/</span>
+          <span className="text-red-700">
+            {connect.value.wrong === 0 ? '0' : `−${Math.abs(connect.value.wrong)}`}
+          </span>
+        </p>
+      </div>
+      <ol className="flex flex-wrap gap-1.5">
+        {connect.ladder.map((rung, i) => (
+          <li
+            key={i}
+            className={`rounded border px-2 py-0.5 font-mono text-xs ${
+              i === connect.stageIdx
+                ? 'border-blue-600 bg-blue-50 font-semibold'
+                : i < connect.stageIdx
+                  ? 'border-neutral-200 text-neutral-400 line-through'
+                  : 'border-neutral-300 text-neutral-600'
+            }`}
+          >
+            +{rung.correct} / {rung.wrong === 0 ? '0' : `−${Math.abs(rung.wrong)}`}
+          </li>
+        ))}
+      </ol>
+      <p className="mt-2 text-xs text-neutral-600">
+        One pounce per team for the whole connect, right or wrong. Every image
+        after this one is worth less.
+      </p>
     </div>
   );
 }

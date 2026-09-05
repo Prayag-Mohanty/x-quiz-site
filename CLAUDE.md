@@ -77,7 +77,7 @@ packages/client/         Vite + React. Authoring, QM console, team client, score
 definition of done. Authoring, the QM console, the team client and the scoreboard all work
 end to end against a real database and real sockets.
 
-Tests, all passing: engine 37, db mapping 21, server 42, schema 31 SQL assertions.
+Tests, all passing: engine 54, db mapping 21, server 59, schema 33 SQL assertions.
 
 Two things to know before changing anything:
 
@@ -88,8 +88,11 @@ Two things to know before changing anything:
   `packages/server/src/views.ts` — the comment there is the rule, and the tests assert
   against the serialised bytes rather than object properties.
 
-Not built: media upload (last Phase 0 item), the written and visual-connect round UIs
-(Phase 4), native video (Phase 3). See `docs/BUILD_ORDER.md`.
+All three round types now have a console and a team screen: DIRECT (§2.1), WRITTEN
+(§2.2) and VISUAL_CONNECT (§2.3). Media upload is done.
+
+Not built: native video (Phase 3), and everything in Phase 5. See
+`docs/BUILD_ORDER.md`.
 
 ---
 

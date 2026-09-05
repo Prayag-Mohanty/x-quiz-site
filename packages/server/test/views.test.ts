@@ -422,3 +422,146 @@ test('the same sheet is what the QM grades, question by question', () => {
   assert.equal(alpha.find((a) => a.questionId === 'w1')?.staked, false);
   assert.equal(alpha.find((a) => a.questionId === 'w2')?.staked, true);
 });
+
+// ─── Long visual connect ────────────────────────────────────────────────────
+
+const CONNECTION = 'They all played at the Isle of Wight';
+const SECRET_CONNECT_POUNCE = 'Gamma guesses Woodstock';
+
+/**
+ * A quiz whose second round is a connect with three reveal images — one fewer
+ * than the four stages the default ladder runs to, which is the authoring gap
+ * the QM console is supposed to show rather than hide.
+ */
+function connectState(): QuizState {
+  const state = baseState();
+  return {
+    ...state,
+    roundIdx: 1,
+    rounds: [
+      ...state.rounds,
+      {
+        id: 'r2',
+        type: 'VISUAL_CONNECT',
+        title: 'Connect',
+        questions: [
+          {
+            id: 'c1',
+            text: 'What connects these?',
+            media: [],
+            parts: [],
+            answerText: CONNECTION,
+            answerMedia: [],
+            revealSequence: [1, 2, 3].map((n) => ({
+              id: `img${n}`,
+              kind: 'IMAGE' as const,
+              url: `/media/img${n}.jpg`,
+            })),
+          },
+        ],
+      },
+    ],
+  };
+}
+
+test('a team gets the decay ladder, and only the reveals shown so far', () => {
+  let state = run(connectState(), [{ type: 'PRESENT_QUESTION', questionId: 'c1' }]);
+
+  let view = buildTeamView(state, ctx, { teamId: 't2', displayName: 'Someone' });
+  assert.equal(view.connect?.stageIdx, 0);
+  assert.equal(view.connect?.stageCount, 4);
+  // FORMAT_SPEC §2.3: the first reveal is worth +20 / −15.
+  assert.deepEqual(view.connect?.value, { correct: 20, wrong: -15 });
+  assert.equal(view.connect?.ladder.length, 4);
+  // One image shown, not the three that exist. The rest have not been revealed
+  // to the room, so they are not on the wire either.
+  assert.deepEqual(view.question?.media.map((m) => m.id), ['img1']);
+  assert.equal(JSON.stringify(view).includes('img2'), false);
+
+  state = run(state, [
+    { type: 'OPEN_POUNCE' },
+    { type: 'CLOSE_POUNCE' },
+    { type: 'FINISH_POUNCE_EVALUATION' },
+    { type: 'ADVANCE_REVEAL' },
+  ]);
+
+  view = buildTeamView(state, ctx, { teamId: 't2', displayName: 'Someone' });
+  assert.equal(view.connect?.stageIdx, 1);
+  assert.deepEqual(view.connect?.value, { correct: 15, wrong: -10 });
+  assert.deepEqual(view.question?.media.map((m) => m.id), ['img1', 'img2']);
+  // Still not the answer, three reveals in.
+  assert.equal(JSON.stringify(view).includes(CONNECTION), false);
+});
+
+test('the QM sees who is spent and which reveal has no image', () => {
+  const state = run(connectState(), [
+    { type: 'PRESENT_QUESTION', questionId: 'c1' },
+    { type: 'OPEN_POUNCE' },
+    { type: 'SUBMIT_POUNCE', teamId: 't3', text: SECRET_CONNECT_POUNCE },
+    { type: 'CLOSE_POUNCE' },
+    { type: 'EVALUATE_POUNCE', teamId: 't3', verdict: 'WRONG', eventId: 'e1' },
+  ]);
+
+  const connect = buildQmView(state, ctx).connect;
+  assert.ok(connect);
+
+  // Spent is per QUESTION, not per reveal — Gamma is out for the rest of it.
+  assert.deepEqual(connect.spent.map((t) => t.name), ['Gamma']);
+  assert.deepEqual(connect.eligible.map((t) => t.name), ['Alpha', 'Beta', 'Delta']);
+
+  // Four stages, three images: the fourth row is a hole, and the console shows
+  // it rather than advancing into a blank screen.
+  assert.equal(connect.reveals.length, 4);
+  assert.deepEqual(
+    connect.reveals.map((r) => r.media?.id ?? null),
+    ['img1', 'img2', 'img3', null],
+  );
+  assert.deepEqual(connect.reveals.map((r) => r.shown), [true, false, false, false]);
+});
+
+/**
+ * A connect pounce judged at reveal one is cleared from live state when the
+ * round advances, so the ledger is the only place the verdict survives. It is
+ * still withheld until the answer is read out, exactly like every other one.
+ */
+test('a connect verdict from an earlier reveal reaches the team at the reveal, not before', () => {
+  let state = run(connectState(), [
+    { type: 'PRESENT_QUESTION', questionId: 'c1' },
+    { type: 'OPEN_POUNCE' },
+    { type: 'SUBMIT_POUNCE', teamId: 't3', text: SECRET_CONNECT_POUNCE },
+    { type: 'CLOSE_POUNCE' },
+    { type: 'EVALUATE_POUNCE', teamId: 't3', verdict: 'WRONG', eventId: 'e1' },
+    { type: 'FINISH_POUNCE_EVALUATION' },
+    { type: 'ADVANCE_REVEAL' },
+  ]);
+
+  const gamma = () => buildTeamView(state, ctx, { teamId: 't3', displayName: 'Someone' });
+
+  // Spent, and told so — but not told the outcome, because the connect is still
+  // running and a −15 on the board would tell the room the guess was wrong.
+  assert.equal(gamma().pounce.spent, true);
+  assert.equal(gamma().pounce.yourVerdict, null);
+  assert.equal(gamma().standings.find((s) => s.teamId === 't3')?.score, 0);
+
+  state = run(state, [
+    { type: 'OPEN_POUNCE' },
+    { type: 'CLOSE_POUNCE' },
+    { type: 'FINISH_POUNCE_EVALUATION' },
+    { type: 'ADVANCE_REVEAL' },
+    { type: 'OPEN_POUNCE' },
+    { type: 'CLOSE_POUNCE' },
+    { type: 'FINISH_POUNCE_EVALUATION' },
+    { type: 'ADVANCE_REVEAL' },
+    { type: 'OPEN_POUNCE' },
+    { type: 'CLOSE_POUNCE' },
+    { type: 'FINISH_POUNCE_EVALUATION' },
+    // Out of reveals with nobody right: the connect dies (§5.4 default).
+    { type: 'ADVANCE_REVEAL' },
+  ]);
+  assert.equal(state.active?.phase, 'DEAD');
+  assert.equal(gamma().pounce.yourVerdict, null, 'still withheld while DEAD');
+
+  state = run(state, [{ type: 'REVEAL_ANSWER' }]);
+  assert.equal(gamma().pounce.yourVerdict, 'WRONG');
+  assert.equal(gamma().standings.find((s) => s.teamId === 't3')?.score, -15);
+});

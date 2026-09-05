@@ -70,7 +70,7 @@ Expect the long tail to exceed the estimate. This is where you replace Meet.
 Engine support already exists. This is UI.
 
 - [x] Written round: staged display, collection, stake toggle, evaluation grid
-- [ ] Visual connect: staged reveals, per-stage pounce, spent-team tracking
+- [x] Visual connect: staged reveals, per-stage pounce, spent-team tracking
 
 ---
 

@@ -113,7 +113,7 @@ function primaryAction(view: QmView): { label: string; action: Action } | null {
   // get "PRESENT_QUESTION is not legal in phase WRITTEN round" — a button that
   // cannot work is worse than no button.
   if (view.round?.type === 'WRITTEN') return writtenPrimaryAction(view);
-  if (view.round?.type === 'VISUAL_CONNECT') return null;
+  if (view.round?.type === 'VISUAL_CONNECT') return connectPrimaryAction(view);
 
   switch (view.phase) {
     case 'IDLE':
@@ -173,6 +173,53 @@ function writtenPrimaryAction(view: QmView): { label: string; action: Action } |
         ? { label: `Start ${view.rounds[next]?.title ?? 'next round'}`, action: { type: 'START_ROUND', roundIdx: next } }
         : null;
     }
+    default:
+      return null;
+  }
+}
+
+/**
+ * The long visual connect — FORMAT_SPEC §2.3.
+ *
+ * A single connection walked through a series of images, pounce-only, with the
+ * value decaying at every reveal. There is no bounce and no final call, so the
+ * DIRECT ladder above would offer buttons the engine refuses; this is the
+ * connect's own sequence and nothing else is legal.
+ */
+function connectPrimaryAction(view: QmView): { label: string; action: Action } | null {
+  const connect = view.connect;
+
+  switch (view.phase) {
+    case 'IDLE':
+      return view.nextQuestion
+        ? {
+            label: 'Show first image',
+            action: { type: 'PRESENT_QUESTION', questionId: view.nextQuestion.id },
+          }
+        : null;
+    case 'REVEAL_SHOWN':
+      return { label: 'Open pounce', action: { type: 'OPEN_POUNCE' } };
+    case 'POUNCE_OPEN':
+      return { label: 'Close pounce', action: { type: 'CLOSE_POUNCE' } };
+    case 'POUNCE_CLOSED':
+      return { label: 'Done evaluating', action: { type: 'FINISH_POUNCE_EVALUATION' } };
+    case 'POUNCE_EVALUATED': {
+      // Same action either way. The label is the difference between "another
+      // image is coming" and "that was the last one" — which is what the QM is
+      // about to say out loud, so the button should already know.
+      const last = connect ? connect.stageIdx + 1 >= connect.stageCount : false;
+      return last
+        ? { label: 'Out of images — end it', action: { type: 'ADVANCE_REVEAL' } }
+        : {
+            label: `Show image ${(connect?.stageIdx ?? 0) + 2}`,
+            action: { type: 'ADVANCE_REVEAL' },
+          };
+    }
+    case 'RESOLVED':
+    case 'DEAD':
+      return { label: 'Reveal answer', action: { type: 'REVEAL_ANSWER' } };
+    case 'REVEALED':
+      return { label: 'Next question', action: { type: 'NEXT_QUESTION' } };
     default:
       return null;
   }
@@ -280,12 +327,7 @@ function Console({ view, onLeave }: { view: QmView; onLeave: () => void }) {
           {view.round?.type === 'WRITTEN' ? (
             <WrittenPanel view={view} act={act} />
           ) : view.round?.type === 'VISUAL_CONNECT' ? (
-            <Panel title="Long visual connect">
-              <p className="text-sm text-neutral-600">
-                This round type has no console yet — it is Phase 4 in the build
-                order. The engine supports it; the screen does not.
-              </p>
-            </Panel>
+            <ConnectPanel view={view} act={act} />
           ) : (
             <>
               <QuestionPanel view={view} />
@@ -374,7 +416,9 @@ function NavigationPanel({ view, act }: { view: QmView; act: (a: Action) => void
           Next →
         </button>
 
-        {view.nextDirectTeamName && between && (
+        {/* Only a DIRECT round has a direct team. Showing it on a written or
+            connect round states a fact that is not true of that round. */}
+        {view.nextDirectTeamName && between && view.round?.type === 'DIRECT' && (
           <span className="ml-auto text-xs text-neutral-500">
             next direct: <strong>{view.nextDirectTeamName}</strong>
           </span>
@@ -465,8 +509,16 @@ function QuestionPanel({ view }: { view: QmView }) {
  */
 function PouncePanel({ view, act }: { view: QmView; act: (a: Action) => void }) {
   const open = view.phase === 'POUNCE_OPEN' || view.phase === 'POUNCE_FINAL_CALL';
+  // A connect pounce is worth whatever the current reveal is worth (§2.3), not
+  // the DIRECT +10/−5. Judging one against the wrong figure is the kind of
+  // mistake that is invisible until someone adds the scores up afterwards.
+  const value = view.connect?.value ?? { correct: 10, wrong: -5 };
+  const award = (verdict: 'CORRECT' | 'WRONG') => {
+    const points = verdict === 'CORRECT' ? value.correct : value.wrong;
+    return points > 0 ? `+${points}` : points === 0 ? '0' : `−${Math.abs(points)}`;
+  };
   return (
-    <Panel title={`Pounces (${view.pounces.length})`} aside={<span className="text-xs text-neutral-500">{open ? 'blind until closed' : '+10 / −5'}</span>}>
+    <Panel title={`Pounces (${view.pounces.length})`} aside={<span className="text-xs text-neutral-500">{open ? 'blind until closed' : `${award('CORRECT')} / ${award('WRONG')}`}</span>}>
       {view.pounces.length === 0 && <p className="text-sm text-neutral-500">Nobody yet.</p>}
       <ul className="space-y-2">
         {view.pounces.map((p) => (
@@ -483,7 +535,7 @@ function PouncePanel({ view, act }: { view: QmView; act: (a: Action) => void }) 
               <span className="flex gap-1">
                 {p.verdict ? (
                   <span className={p.verdict === 'CORRECT' ? 'text-green-700' : 'text-red-700'}>
-                    {p.verdict === 'CORRECT' ? '+10' : '−5'}
+                    {award(p.verdict)}
                   </span>
                 ) : (
                   <>
@@ -679,6 +731,154 @@ function PresencePanel({ view }: { view: QmView }) {
         ))}
       </ul>
     </Panel>
+  );
+}
+
+/**
+ * The long visual connect console — FORMAT_SPEC §2.3.
+ *
+ * One connection, walked through a series of images, pounce-only. Two things
+ * make this round hard to run from memory and both are on the screen:
+ *
+ *   - the value decays every reveal (+20/−15 → +15/−10 → +10/−5 → +5/0), so the
+ *     figure you are about to award changes under you between stages
+ *   - a pounce is spent per QUESTION, not per reveal, so by the third image the
+ *     set of teams still allowed to pounce is not the set you started with
+ *
+ * The image itself is deliberately large. This is the one round where the QM is
+ * looking at the same thing the room is looking at.
+ */
+function ConnectPanel({ view, act }: { view: QmView; act: (a: Action) => void }) {
+  const connect = view.connect;
+  if (!connect) {
+    return (
+      <Panel title="Long visual connect">
+        {view.nextQuestion ? (
+          <p className="text-sm text-neutral-600">
+            Up next — connect {view.nextQuestion.index + 1} of {view.nextQuestion.total}.
+            Space shows the first image.
+          </p>
+        ) : (
+          <p className="text-sm text-neutral-500">No more connects in this round.</p>
+        )}
+      </Panel>
+    );
+  }
+
+  const current = connect.reveals[connect.stageIdx];
+  const missing = connect.reveals.filter((r) => r.media === null);
+
+  return (
+    <>
+      <Panel
+        title={`Reveal ${connect.stageIdx + 1} of ${connect.stageCount}`}
+        aside={
+          <span className="font-mono text-xs">
+            <span className="text-green-700">+{connect.value.correct}</span>
+            <span className="mx-1 text-neutral-400">/</span>
+            <span className="text-red-700">
+              {connect.value.wrong === 0 ? '0' : `−${Math.abs(connect.value.wrong)}`}
+            </span>
+            <span className="ml-2 text-neutral-500">right now</span>
+          </span>
+        }
+      >
+        {current?.media ? (
+          <img
+            src={current.media.url}
+            alt=""
+            className="max-h-[28rem] w-full rounded border border-neutral-200 object-contain"
+          />
+        ) : (
+          <p className="rounded border border-red-200 bg-red-50 px-3 py-6 text-center text-sm text-red-800">
+            No image authored for this reveal. The round can still run — you can
+            describe it out loud — but nothing is on the teams' screens.
+          </p>
+        )}
+
+        {/* The ladder, with the rung you are on marked. What waiting costs. */}
+        <ol className="mt-3 flex flex-wrap gap-2">
+          {connect.ladder.map((rung, i) => (
+            <li
+              key={i}
+              className={`rounded border px-2 py-1 text-xs ${
+                i === connect.stageIdx
+                  ? 'border-blue-600 bg-blue-50 font-semibold'
+                  : i < connect.stageIdx
+                    ? 'border-neutral-200 text-neutral-400 line-through'
+                    : 'border-neutral-300 text-neutral-600'
+              }`}
+            >
+              <span className="mr-1">{i + 1}</span>
+              <span className="font-mono">
+                +{rung.correct} / {rung.wrong === 0 ? '0' : `−${Math.abs(rung.wrong)}`}
+              </span>
+            </li>
+          ))}
+        </ol>
+
+        {missing.length > 0 && current?.media && (
+          <p className="mt-2 text-xs text-amber-700">
+            {missing.length === 1
+              ? `Reveal ${missing[0]!.index + 1} has no image.`
+              : `Reveals ${missing.map((r) => r.index + 1).join(', ')} have no image.`}{' '}
+            The connect dies after reveal {connect.stageCount} either way.
+          </p>
+        )}
+
+        {/* The QM's crib sheet — the connection itself. Never sent to a team. */}
+        {view.answer && (
+          <div className="mt-3 rounded border border-amber-200 bg-amber-50 p-3">
+            <p className="text-xs font-semibold uppercase text-amber-800">
+              The connection — yours only
+            </p>
+            <p className="mt-1 whitespace-pre-wrap">{view.answer.text}</p>
+          </div>
+        )}
+      </Panel>
+
+      <Panel
+        title="Who can still pounce"
+        aside={
+          <span className="text-xs text-neutral-500">one per team per connect</span>
+        }
+      >
+        <div className="flex flex-wrap gap-2">
+          {[
+            ...connect.eligible.map((t) => ({ ...t, spent: false })),
+            ...connect.spent.map((t) => ({ ...t, spent: true })),
+          ]
+            // Seat order, so this reads the same way as every other list.
+            .sort(
+              (a, b) =>
+                view.standings.findIndex((s) => s.teamId === a.teamId) -
+                view.standings.findIndex((s) => s.teamId === b.teamId),
+            )
+            .map((t) => (
+              <span
+                key={t.teamId}
+                className={`rounded border px-2 py-1 text-sm ${
+                  t.spent
+                    ? 'border-neutral-200 bg-neutral-50 text-neutral-400 line-through'
+                    : 'border-neutral-400'
+                }`}
+              >
+                {t.name}
+              </span>
+            ))}
+        </div>
+        {connect.eligible.length === 0 && (
+          <p className="mt-2 text-sm text-neutral-600">
+            Everyone has pounced. Nobody can answer this connect any more —
+            advance to the end and reveal it.
+          </p>
+        )}
+      </Panel>
+
+      {(view.phase === 'POUNCE_OPEN' || view.phase === 'POUNCE_CLOSED') && (
+        <PouncePanel view={view} act={act} />
+      )}
+    </>
   );
 }
 

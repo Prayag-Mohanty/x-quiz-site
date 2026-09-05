@@ -17,8 +17,9 @@
  *   - PENDING partials never reach a team, which is the entire reason that
  *     status exists
  *
- * Written and visual-connect rounds get a truthful but minimal view here; their
- * dedicated UIs are Phase 4. A DIRECT round is the one Phase 1 must run well.
+ * All three round types are built out here. What differs between them is which
+ * block is non-null — `written` for §2.2, `connect` for §2.3 — so a client can
+ * branch on the round type and find everything that round needs in one place.
  */
 
 import {
@@ -33,7 +34,9 @@ import {
   type TeamId,
 } from '@quizmaster/engine';
 import type {
+  ConnectView,
   PublicQuestion,
+  QmConnectView,
   QmWrittenView,
   TeamWrittenView,
   PublicStanding,
@@ -179,6 +182,62 @@ function buildTeamWritten(state: QuizState, teamId: TeamId): TeamWrittenView | n
   };
 }
 
+/**
+ * A long visual connect, for everyone.
+ *
+ * The decay ladder is a rule, not a secret — the room is told it out loud
+ * before the round starts — so teams get the whole thing. What a team must
+ * decide, every reveal, is whether the connection is worth 20 to them yet, and
+ * that decision is worse when the numbers are in someone's memory rather than
+ * on the screen (FORMAT_SPEC §2.3).
+ */
+function buildConnect(state: QuizState): ConnectView | null {
+  const active = state.active;
+  if (!active || active.kind !== 'VISUAL_CONNECT') return null;
+  const ladder = state.connectStages.map((s) => ({ correct: s.correct, wrong: s.wrong }));
+  // Past the end of the ladder the question is dead, but the view still has to
+  // render; fall back to the last rung rather than to undefined.
+  const stage = ladder[active.stageIdx] ?? ladder[ladder.length - 1] ?? { correct: 0, wrong: 0 };
+  return {
+    stageIdx: active.stageIdx,
+    stageCount: ladder.length,
+    value: stage,
+    ladder,
+  };
+}
+
+function buildQmConnect(state: QuizState): QmConnectView | null {
+  const base = buildConnect(state);
+  const active = state.active;
+  if (!base || !active || active.kind !== 'VISUAL_CONNECT') return null;
+
+  const question = activeQuestion(state);
+  const sequence = question?.revealSequence ?? [];
+
+  return {
+    ...base,
+    // One row per STAGE, not per image: a connect dies when the stages run out,
+    // so a question with three images and four stages has a hole in it, and the
+    // console is where that should be visible rather than a blank fourth screen.
+    reveals: Array.from({ length: base.stageCount }, (_, index) => {
+      const media = sequence[index];
+      return {
+        index,
+        media: media ? { id: media.id, kind: media.kind, url: media.url } : null,
+        shown: index <= active.stageIdx,
+      };
+    }),
+    // Spent is per QUESTION, not per stage (§2.3) — which is exactly the thing
+    // a QM loses track of three reveals in.
+    spent: state.teams
+      .filter((t) => active.spentTeams.includes(t.id))
+      .map((t) => ({ teamId: t.id, name: t.name })),
+    eligible: state.teams
+      .filter((t) => !active.spentTeams.includes(t.id))
+      .map((t) => ({ teamId: t.id, name: t.name })),
+  };
+}
+
 function buildQmWritten(state: QuizState): QmWrittenView | null {
   const active = state.active;
   if (!active || active.kind !== 'WRITTEN') return null;
@@ -296,6 +355,28 @@ export function buildTeamView(
   const revealed = active?.phase === 'REVEALED';
   const question = activeQuestion(state);
 
+  /**
+   * A connect pounce judged at an earlier reveal.
+   *
+   * FINISH_POUNCE_EVALUATION clears `pounces` when nobody was right, because
+   * the next reveal starts a fresh window — so by the time the answer is read
+   * out, the team that pounced at image one has nothing left in live state and
+   * would be told nothing at all. The ledger still has it. Gated on `revealed`
+   * exactly like every other verdict: before that, this is the withheld result.
+   */
+  const connectVerdict = (): 'CORRECT' | 'WRONG' | null => {
+    if (!revealed || active?.kind !== 'VISUAL_CONNECT') return null;
+    const event = state.ledger.find(
+      (e) =>
+        e.teamId === viewer.teamId &&
+        e.questionId === active.questionId &&
+        e.status !== 'VOIDED' &&
+        (e.reason === 'CONNECT_CORRECT' || e.reason === 'CONNECT_WRONG'),
+    );
+    if (!event) return null;
+    return event.reason === 'CONNECT_CORRECT' ? 'CORRECT' : 'WRONG';
+  };
+
   return {
     role: 'TEAM',
     quizTitle: ctx.quizTitle,
@@ -329,7 +410,7 @@ export function buildTeamView(
        * mid-bounce would be the same disclosure the withheld score prevents,
        * arriving by a different route.
        */
-      yourVerdict: revealed ? (own?.verdict ?? null) : null,
+      yourVerdict: revealed ? (own?.verdict ?? connectVerdict()) : null,
       spent:
         active?.kind === 'VISUAL_CONNECT' ? active.spentTeams.includes(viewer.teamId) : false,
     },
@@ -363,6 +444,8 @@ export function buildTeamView(
         : null,
 
     written: buildTeamWritten(state, viewer.teamId),
+
+    connect: buildConnect(state),
   };
 }
 
@@ -466,6 +549,8 @@ export function buildQmView(state: QuizState, ctx: RoomContext): QmView {
     revealed: active?.phase === 'REVEALED',
 
     written: buildQmWritten(state),
+
+    connect: buildQmConnect(state),
 
     // What to present next. Null while a question is still in play.
     nextQuestion:

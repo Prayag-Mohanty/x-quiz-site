@@ -82,6 +82,45 @@ export interface TeamDraft {
   typing: string[];
 }
 
+// ─── Long visual connect ────────────────────────────────────────────────────
+
+/**
+ * Where a long visual connect is, and what a pounce is worth right now.
+ *
+ * FORMAT_SPEC §2.3: one connection revealed through a series of images, and the
+ * value decays with each reveal — +20/−15, then +15/−10, then +10/−5, then
+ * +5/0. Teams need this in front of them, because the whole round is the
+ * decision "is it worth 20 to me yet?", and a team doing that arithmetic from
+ * memory is a team getting it wrong.
+ *
+ * Public in full: the decay ladder is a rule, not a secret.
+ */
+export interface ConnectView {
+  /** 0-based index of the reveal being shown. */
+  stageIdx: number;
+  /** How many reveals this connect runs to before it dies (§5.4). */
+  stageCount: number;
+  /** What a pounce is worth at THIS reveal. */
+  value: { correct: number; wrong: number };
+  /** Every stage's value, so a team can see what waiting costs. */
+  ladder: { correct: number; wrong: number }[];
+}
+
+export interface QmConnectView extends ConnectView {
+  /**
+   * The reveal images in order.
+   *
+   * `media` is null when the question has fewer images than there are stages —
+   * an authoring gap the QM should see on the console rather than discover by
+   * advancing into a blank screen.
+   */
+  reveals: { index: number; media: ViewMedia | null; shown: boolean }[];
+  /** Teams out for the rest of this connect, having already pounced (§2.3). */
+  spent: { teamId: string; name: string }[];
+  /** Teams that may still pounce. */
+  eligible: { teamId: string; name: string }[];
+}
+
 // ─── Team view ──────────────────────────────────────────────────────────────
 
 export interface TeamView {
@@ -156,6 +195,9 @@ export interface TeamView {
 
   /** Present only during a WRITTEN round (FORMAT_SPEC §2.2). */
   written: TeamWrittenView | null;
+
+  /** Present only during a VISUAL_CONNECT round (FORMAT_SPEC §2.3). */
+  connect: ConnectView | null;
 }
 
 /**
@@ -279,6 +321,9 @@ export interface QmView {
 
   /** Present only during a WRITTEN round (FORMAT_SPEC §2.2). */
   written: QmWrittenView | null;
+
+  /** Present only during a VISUAL_CONNECT round (FORMAT_SPEC §2.3). */
+  connect: QmConnectView | null;
 
   /**
    * The question PRESENT_QUESTION should be called with next.
