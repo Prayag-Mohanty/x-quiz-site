@@ -24,7 +24,12 @@ import {
   type QuizState,
 } from '@quizmaster/engine';
 
-import { buildQmView, buildTeamView, type RoomContext } from '../src/views.js';
+import {
+  buildQmView,
+  buildScoreboardView,
+  buildTeamView,
+  type RoomContext,
+} from '../src/views.js';
 
 const ANSWER = 'Cream and Disraeli Gears';
 const SECRET_POUNCE = 'Led Zeppelin — Houses of the Holy';
@@ -564,4 +569,94 @@ test('a connect verdict from an earlier reveal reaches the team at the reveal, n
   state = run(state, [{ type: 'REVEAL_ANSWER' }]);
   assert.equal(gamma().pounce.yourVerdict, 'WRONG');
   assert.equal(gamma().standings.find((s) => s.teamId === 't3')?.score, -15);
+});
+
+// ─── The projector view ─────────────────────────────────────────────────────
+
+/**
+ * The scoreboard now carries the question, so it needs the same scrutiny the
+ * team view gets — and more, because it has no credential at all. Anyone with
+ * the quiz id can open it, and the quiz id is in the link you project.
+ */
+const asBoard = (s: QuizState) => JSON.stringify(buildScoreboardView(s, ctx));
+
+test('the projector shows the question but never the answer before the reveal', () => {
+  let state = run(baseState(), [{ type: 'PRESENT_QUESTION', questionId: 'q1' }]);
+  assert.equal(asBoard(state).includes('Name the band and the album.'), true);
+  assert.equal(asBoard(state).includes(ANSWER), false);
+
+  state = run(state, [
+    { type: 'OPEN_POUNCE' },
+    { type: 'SUBMIT_POUNCE', teamId: 't2', text: SECRET_POUNCE },
+    { type: 'CLOSE_POUNCE' },
+  ]);
+  // Pounce text is written-blind and stays that way on a screen in the room.
+  assert.equal(asBoard(state).includes(SECRET_POUNCE), false);
+  assert.equal(asBoard(state).includes(ANSWER), false);
+
+  state = run(state, [
+    { type: 'FINISH_POUNCE_EVALUATION' },
+    { type: 'OPEN_BOUNCE' },
+    { type: 'BOUNCE_CORRECT', eventId: 'e1' },
+    { type: 'REVEAL_ANSWER' },
+  ]);
+  assert.equal(asBoard(state).includes(ANSWER), true);
+});
+
+test('a question the QM has not presented is not on the projector', () => {
+  const idle = baseState();
+  assert.equal(buildScoreboardView(idle, ctx).question, null);
+  assert.equal(asBoard(idle).includes('Name the band and the album.'), false);
+});
+
+test('the projector never carries canonical part answers', () => {
+  const state = run(baseState(), [
+    { type: 'PRESENT_QUESTION', questionId: 'q1' },
+    { type: 'OPEN_POUNCE' },
+    { type: 'CLOSE_POUNCE' },
+    { type: 'FINISH_POUNCE_EVALUATION' },
+    { type: 'OPEN_BOUNCE' },
+    { type: 'BOUNCE_CORRECT', eventId: 'e1' },
+    { type: 'REVEAL_ANSWER' },
+  ]);
+  // The reveal is the answer text, not the QM's crib sheet.
+  assert.equal(asBoard(state).includes('Disraeli Gears'), true, 'the answer is shown');
+  assert.equal(asBoard(state).includes('"canonicalAnswer"'), false);
+  assert.equal(asBoard(state).includes('"Band"'), false, 'part labels are the QM\'s');
+});
+
+test('a withheld partial is as absent from the projector as from a team', () => {
+  const state = run(baseState(), [
+    { type: 'PRESENT_QUESTION', questionId: 'q1' },
+    { type: 'OPEN_POUNCE' },
+    { type: 'CLOSE_POUNCE' },
+    { type: 'FINISH_POUNCE_EVALUATION' },
+    { type: 'OPEN_BOUNCE' },
+    { type: 'BOUNCE_PARTIAL', partIds: ['p1'], eventId: 'e1' },
+  ]);
+  const board = buildScoreboardView(state, ctx);
+  // Recorded, and not on a screen in the room — the whole point of PENDING.
+  assert.ok(state.ledger.some((e) => e.status === 'PENDING'));
+  assert.ok(board.standings.every((s) => s.score === 0));
+});
+
+test('the projector shows whose turn it is on the bounce', () => {
+  const state = run(baseState(), [
+    { type: 'PRESENT_QUESTION', questionId: 'q1' },
+    { type: 'OPEN_BOUNCE' },
+    { type: 'BOUNCE_WRONG' },
+  ]);
+  const board = buildScoreboardView(state, ctx);
+  assert.equal(board.bounce.active, true);
+  assert.equal(board.bounce.onTeamName, 'Beta');
+  assert.equal(board.bounce.order.find((t) => t.name === 'Alpha')?.offered, true);
+});
+
+test('a connect shows the room what the reveal is worth, and only the images shown', () => {
+  const state = run(connectState(), [{ type: 'PRESENT_QUESTION', questionId: 'c1' }]);
+  const board = buildScoreboardView(state, ctx);
+  assert.deepEqual(board.connect?.value, { correct: 20, wrong: -15 });
+  assert.deepEqual(board.question?.media.map((m) => m.id), ['img1']);
+  assert.equal(asBoard(state).includes('img2'), false);
+  assert.equal(asBoard(state).includes(CONNECTION), false);
 });

@@ -70,7 +70,7 @@ install a permanent one.
 | `/` | Authoring. Write the quiz: teams, rounds, questions, parts, answers. |
 | `/qm` | The quizmaster console. Drives the live quiz. |
 | `/play` | The team client. Teams join with a short code. |
-| `/scoreboard?quiz=…` | Read-only scoreboard, safe to project or share. |
+| `/scoreboard?quiz=…` | The projector view: the question, the bounce, the answer at reveal, the scores. Safe to share. |
 | `/breakdown?quiz=…` | Post-quiz report: every award, every answer written. Needs your token. |
 
 The authoring screen has a **Run this quiz** panel with your console link, the scoreboard
@@ -125,6 +125,19 @@ partial credit is a click rather than arithmetic done live.
 Pounces are the opposite and always have been: **typed, never spoken**, submitted blind.
 You see who has pounced while the window is open and what they wrote only after you close
 it — the rule binds you too, so the decision to close is not coloured by what came in.
+
+### What to put on the shared screen
+
+`/scoreboard?quiz=…` — it carries the question as it is presented, whose turn it is on the
+bounce, the answer when you reveal it, and the scores. It has a full-screen button, and it
+needs no credential, so it can go on a projector, into a screenshare, or to a spectator.
+
+It shows exactly what a team is allowed to see and nothing that is theirs: no pounce text,
+no canonical answer before the reveal, and APPLIED points only — a partial you have awarded
+and not yet revealed is as absent from it as it is from a team's screen.
+
+Teams do not need it; the question is already on their own screens, and they can full-screen
+it there.
 
 ### How the QM sees the teams
 
@@ -217,6 +230,7 @@ No test had caught it. That is what running one is for.
 | **Written rounds (§2.2)** | Questions read one at a time above a single answer sheet, per-question staking, a grading grid across every team. |
 | **Visual connect (§2.3)** | Staged reveals with the decay ladder on both screens, one pounce per team per connect, spent-team tracking. |
 | **Running it** | QM console, team client, live scoreboard, undo on one key, manual score adjustment with a mandatory reason, reconnection into the exact current state, five clients acting at once converging on one state. |
+| **Presenting** | `/scoreboard?quiz=…` — question, bounce, answer at reveal, scores. No credential, full-screen, safe to project. |
 | **Afterwards** | `/breakdown?quiz=…` — every award attributed, what each team wrote, tiebreak signals, two CSVs. |
 | **Getting people in** | One port serving everything, an access boundary that keeps the answers behind the quizmaster's token, and `docs/RUNNING.md` for LAN versus a tunnel. |
 
@@ -228,8 +242,8 @@ No test had caught it. That is what running one is for.
 - **Phase 3 — native video.** LiveKit, QM broadcast with selective unmute, team-private
   audio rooms, a video grid in the console. This is the part that removes the second
   browser window.
-- **Phase 5 — the rest of the polish.** Scoreboard animation, a QM audit log, a
-  spectator view.
+- **Phase 5 — the rest of the polish.** Scoreboard animation and a QM audit log. The
+  spectator view is done — it is the projector view above.
 - **Hosting.** Deliberately deferred until a real quiz has been run. A tunnel is the
   stand-in and it is enough.
 
@@ -246,7 +260,7 @@ the schema both insist on.
 ```
 cd packages/engine && npm test    # 70 — the state machine, every rule in FORMAT_SPEC
 cd packages/db     && npm test    # 21 — row-to-domain mapping
-cd packages/server && npm test    # 67 — API, projections, sockets, access, concurrency
+cd packages/server && npm test    # 73 — API, projections, sockets, access, concurrency
 cd packages/client && npm test    # 18 — the inline text formatter and slide spacing
 psql -d quizmaster -f packages/db/test/smoke.sql   # 35 — the schema enforces FORMAT_SPEC
 ```

@@ -85,7 +85,7 @@ Engine support already exists. This is UI.
 - [x] Post-quiz breakdown export (per-team, from the ledger) — `/breakdown?quiz=…`, CSV
 - [ ] Scoreboard animation
 - [ ] QM audit log
-- [ ] Spectator/stream view
+- [x] Spectator/stream view — the projector view at `/scoreboard?quiz=…`
 
 ---
 

@@ -395,11 +395,38 @@ export interface QmWrittenView {
 
 // ─── Scoreboard view ────────────────────────────────────────────────────────
 
+/**
+ * The projector view.
+ *
+ * Read-only and unauthenticated, which is the point: it is what you put on a
+ * screen in the room or share into a stream. It carries exactly what a TEAM is
+ * allowed to see and nothing that is theirs — the question once it has been
+ * presented, the answer once it has been revealed, whose turn it is on the
+ * bounce, and APPLIED points only.
+ *
+ * Nothing here is a new class of disclosure. The question is being read out
+ * loud as it appears, the bounce order is announced, and a withheld partial is
+ * as absent from this as it is from a team's screen.
+ */
 export interface ScoreboardView {
   role: 'SCOREBOARD';
   quizTitle: string;
   round: RoundHeader | null;
   standings: PublicStanding[];
+
+  phase: Phase | 'IDLE';
+  /** The question on screen, once presented. Never before. */
+  question: PublicQuestion | null;
+  /** Populated only once the QM has revealed. Null at every other moment. */
+  reveal: { text: string; media: ViewMedia[] } | null;
+  /** Whose turn it is, so a room can follow the bounce without the QM narrating it. */
+  bounce: {
+    active: boolean;
+    onTeamName: string | null;
+    order: { teamId: string; name: string; offered: boolean; current: boolean; spent: boolean }[];
+  };
+  /** The decay ladder during a connect (§2.3), so the room can see what is at stake. */
+  connect: ConnectView | null;
 }
 
 export type View = TeamView | QmView | ScoreboardView;

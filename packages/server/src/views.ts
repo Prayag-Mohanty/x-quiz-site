@@ -593,10 +593,33 @@ export function buildQmView(state: QuizState, ctx: RoomContext): QmView {
 // ─── Scoreboard view ────────────────────────────────────────────────────────
 
 export function buildScoreboardView(state: QuizState, ctx: RoomContext): ScoreboardView {
+  const active = state.active;
+  const bounceActive = active?.kind === 'DIRECT' && active.phase === 'BOUNCE';
+  const revealed = active?.phase === 'REVEALED';
+  const question = activeQuestion(state);
+
   return {
     role: 'SCOREBOARD',
     quizTitle: ctx.quizTitle,
     round: roundHeader(state),
     standings: publicStandings(state),
+
+    phase: phaseOf(state),
+    // Exactly the team projection: presented questions only, and for a connect
+    // only the reveals already shown. Nothing here that a team does not have.
+    question: publicQuestion(state),
+    reveal:
+      revealed && question
+        ? { text: question.answerText, media: toViewMedia(question.answerMedia) }
+        : null,
+    bounce: {
+      active: bounceActive,
+      onTeamName:
+        bounceActive && active.bounceTeamIdx !== null
+          ? (state.teams[active.bounceTeamIdx]?.name ?? null)
+          : null,
+      order: bounceOrderFor(state),
+    },
+    connect: buildConnect(state),
   };
 }
