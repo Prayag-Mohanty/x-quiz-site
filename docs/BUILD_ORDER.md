@@ -17,7 +17,7 @@ Build it plain and ugly.
 - [x] Row types + engine↔DB mappers (`packages/db/src`) — 21 tests
 - [x] Authoring API (`packages/server`) — quizzes, teams, rounds, questions, parts; 18 tests
 - [x] Question authoring UI: rounds, questions, parts, answers (`packages/client`)
-- [ ] Media upload (local disk for Phase 0; R2 in Phase 2)
+- [x] Media upload (local disk for Phase 0; R2 in Phase 2)
 - [x] Quiz setup: teams, round order, direction per round
 
 **Done when:** you can author a complete quiz and see it stored.

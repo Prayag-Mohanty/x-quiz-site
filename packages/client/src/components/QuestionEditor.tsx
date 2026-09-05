@@ -10,6 +10,7 @@
 
 import { api } from '../api.js';
 import { useStore } from '../store.js';
+import { MediaPanel } from './MediaPanel.js';
 import { AddForm, Button, EditableText, Panel } from './ui.js';
 
 export function QuestionEditor() {
@@ -82,6 +83,10 @@ export function QuestionEditor() {
             }
           />
         </Field>
+
+        <div className="border-t border-neutral-200 pt-3">
+          <MediaPanel question={question} />
+        </div>
 
         {/* Parts drive bounce partial credit, which only DIRECT rounds have. */}
         {round?.type === 'DIRECT' && (

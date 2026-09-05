@@ -9,10 +9,13 @@
 import Fastify, { type FastifyInstance } from 'fastify';
 import cors from '@fastify/cors';
 import websocket from '@fastify/websocket';
+import multipart from '@fastify/multipart';
+import fastifyStatic from '@fastify/static';
 
 import { describeDbError, pool } from './db.js';
 import { registerRoutes } from './routes.js';
 import { registerJoinRoutes } from './sessions.js';
+import { registerMediaRoutes, UPLOAD_DIR } from './media.js';
 import { registerWebSocket } from './ws.js';
 
 export async function buildApp(
@@ -45,8 +48,16 @@ export async function buildApp(
 
   await app.register(websocket);
 
+  // 300MB covers one 1080p video, which ARCHITECTURE §4 caps a question at.
+  await app.register(multipart, { limits: { fileSize: 300 * 1024 * 1024, files: 1 } });
+
+  // Uploaded files are served from /media/<storage_key>, which is exactly the
+  // URL the row-to-domain mapper builds. Phase 2 swaps this for signed R2 URLs.
+  await app.register(fastifyStatic, { root: UPLOAD_DIR, prefix: '/media/' });
+
   await registerRoutes(app);
   await registerJoinRoutes(app);
+  await registerMediaRoutes(app);
   await registerWebSocket(app);
   return app;
 }

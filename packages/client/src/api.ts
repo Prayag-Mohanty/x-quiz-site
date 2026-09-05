@@ -107,6 +107,28 @@ export const api = {
     request<QuestionRow>('PATCH', `/api/questions/${id}`, patch),
   deleteQuestion: (id: string) => request<void>('DELETE', `/api/questions/${id}`),
 
+  /**
+   * Attach a file. Not `request()` because this is multipart, not JSON — the
+   * browser must set its own boundary, so no content-type is sent here.
+   */
+  uploadMedia: async (questionId: string, role: string, file: File) => {
+    const form = new FormData();
+    form.append('file', file);
+    const res = await fetch(`/api/questions/${questionId}/media?role=${role}`, {
+      method: 'POST',
+      body: form,
+    });
+    const body = await res.json().catch(() => null);
+    if (!res.ok) {
+      throw new ApiError(
+        (body as { message?: string } | null)?.message ?? 'Upload failed.',
+        res.status,
+      );
+    }
+    return body;
+  },
+  deleteMedia: (linkId: string) => request<void>('DELETE', `/api/question-media/${linkId}`),
+
   addPart: (questionId: string, label: string) =>
     request<QuestionPartRow>('POST', `/api/questions/${questionId}/parts`, { label }),
   updatePart: (id: string, patch: Record<string, unknown>) =>
