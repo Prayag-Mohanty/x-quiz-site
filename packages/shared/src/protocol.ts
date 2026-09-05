@@ -139,6 +139,15 @@ export interface TeamView {
 
   draft: TeamDraft;
 
+  /**
+   * Who is connected, across every team.
+   *
+   * Not a secret: everyone is on the same video call and can see who turned up.
+   * Teams need it for the reason the QM does — a quiz that is waiting on a team
+   * that has not joined should say so on every screen, not just the console.
+   */
+  presence: { teamId: string; teamName: string; members: string[] }[];
+
   /** Public scores. Teams see these live — DECISIONS.md open question 6. */
   standings: PublicStanding[];
 
@@ -152,9 +161,13 @@ export interface TeamView {
 /**
  * A written round, from a team's side.
  *
- * Four questions shown one at a time, then all four answer boxes live at once.
- * Staking is declared at submission and locked when the round closes: +15/−5
- * instead of +10/0.
+ * Questions are shown one at a time and the team writes on ONE answer sheet —
+ * a single box, the way a paper written round works. The sheet is submitted
+ * against every question the QM has reached, so the QM can still grade question
+ * by question (FORMAT_SPEC §2.2) while the team only ever sees one box.
+ *
+ * Staking is therefore the one thing that stays per question: it is declared at
+ * submission and locks when the round closes, +15/−5 instead of +10/0.
  */
 export interface TeamWrittenView {
   phase: WrittenPhase;

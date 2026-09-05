@@ -290,3 +290,135 @@ test('the QM can see which part has already been credited, and to whom', () => {
   assert.equal(qm.answer?.parts.find((p) => p.id === 'p1')?.creditedTo, 'Alpha');
   assert.equal(qm.answer?.parts.find((p) => p.id === 'p2')?.creditedTo, null);
 });
+
+// ─── Attendance ─────────────────────────────────────────────────────────────
+
+test('a team sees who is here, across every team', () => {
+  const withPresence: RoomContext = {
+    quizTitle: 'Test Quiz',
+    presence: new Map([
+      ['t1', ['Asha', 'Ravi']],
+      ['t2', ['Meera']],
+    ]),
+    drafts: new Map(),
+  };
+  const view = buildTeamView(baseState(), withPresence, {
+    teamId: 't2',
+    displayName: 'Meera',
+  });
+
+  // Attendance is not a secret — everyone is on the same call — and a team
+  // needs it for the same reason the QM does: is the quiz waiting on someone?
+  assert.deepEqual(view.presence, [
+    { teamId: 't1', teamName: 'Alpha', members: ['Asha', 'Ravi'] },
+    { teamId: 't2', teamName: 'Beta', members: ['Meera'] },
+    { teamId: 't3', teamName: 'Gamma', members: [] },
+    { teamId: 't4', teamName: 'Delta', members: [] },
+  ]);
+});
+
+// ─── Written rounds ─────────────────────────────────────────────────────────
+
+const SHEET_ALPHA = '1. Bombay\n2. Cream\n3. Ganges';
+const SHEET_BETA = '1. Madras\n2. Clapton\n3. Indus';
+
+/** A quiz whose second round is written, with three questions. */
+function writtenState(): QuizState {
+  const state = baseState();
+  return {
+    ...state,
+    roundIdx: 1,
+    rounds: [
+      ...state.rounds,
+      {
+        id: 'r2',
+        type: 'WRITTEN',
+        title: 'Written',
+        questions: [1, 2, 3].map((n) => ({
+          id: `w${n}`,
+          text: `Written question ${n}`,
+          media: [],
+          parts: [],
+          answerText: `Written answer ${n}`,
+          answerMedia: [],
+        })),
+      },
+    ],
+  };
+}
+
+/**
+ * FORMAT_SPEC §2.2, and the shape of the team UI: one sheet, submitted against
+ * every question, so the QM can still grade question by question. What must not
+ * follow from that is a sheet reaching anyone but its own team.
+ */
+test("a team's written sheet never reaches another team", () => {
+  const state = run(writtenState(), [
+    { type: 'SHOW_WRITTEN_QUESTION', index: 0 },
+    { type: 'SHOW_WRITTEN_QUESTION', index: 1 },
+    { type: 'SHOW_WRITTEN_QUESTION', index: 2 },
+    { type: 'OPEN_COLLECTION' },
+    ...['w1', 'w2', 'w3'].map(
+      (questionId): Action => ({
+        type: 'SUBMIT_WRITTEN',
+        teamId: 't1',
+        questionId,
+        text: SHEET_ALPHA,
+        staked: false,
+      }),
+    ),
+    ...['w1', 'w2', 'w3'].map(
+      (questionId): Action => ({
+        type: 'SUBMIT_WRITTEN',
+        teamId: 't2',
+        questionId,
+        text: SHEET_BETA,
+        staked: false,
+      }),
+    ),
+  ]);
+
+  // The sheets are multi-line, and these assertions are against the serialised
+  // bytes, so compare against the JSON-escaped form — the actual wire text.
+  const onWire = (text: string) => JSON.stringify(text).slice(1, -1);
+
+  const beta = asTeam(state, 't2');
+  assert.equal(beta.includes(onWire(SHEET_BETA)), true, 'a team gets its own sheet back');
+  assert.equal(beta.includes(onWire(SHEET_ALPHA)), false, "and never another team's");
+
+  // The written answers are the QM's crib sheet too — not on a team's wire.
+  assert.equal(beta.includes('Written answer 2'), false);
+});
+
+test('the same sheet is what the QM grades, question by question', () => {
+  const state = run(writtenState(), [
+    { type: 'SHOW_WRITTEN_QUESTION', index: 0 },
+    { type: 'SHOW_WRITTEN_QUESTION', index: 1 },
+    { type: 'OPEN_COLLECTION' },
+    ...['w1', 'w2'].map(
+      (questionId): Action => ({
+        type: 'SUBMIT_WRITTEN',
+        teamId: 't1',
+        questionId,
+        text: SHEET_ALPHA,
+        staked: questionId === 'w2',
+      }),
+    ),
+    { type: 'CLOSE_COLLECTION' },
+  ]);
+
+  const written = buildQmView(state, ctx).written;
+  assert.ok(written);
+
+  // One row per team per question, so the grid has no holes, and Alpha's sheet
+  // sits under each question it was submitted against.
+  const alpha = written.answers.filter((a) => a.teamId === 't1');
+  assert.equal(alpha.length, 3);
+  assert.equal(alpha.find((a) => a.questionId === 'w1')?.text, SHEET_ALPHA);
+  assert.equal(alpha.find((a) => a.questionId === 'w2')?.text, SHEET_ALPHA);
+  assert.equal(alpha.find((a) => a.questionId === 'w3')?.text, null);
+
+  // The stake is the one thing that stays per question.
+  assert.equal(alpha.find((a) => a.questionId === 'w1')?.staked, false);
+  assert.equal(alpha.find((a) => a.questionId === 'w2')?.staked, true);
+});

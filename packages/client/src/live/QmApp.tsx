@@ -734,8 +734,9 @@ function WrittenPanel({ view, act }: { view: QmView; act: (a: Action) => void })
 
         {collecting && (
           <p className="text-sm text-neutral-600">
-            All four boxes are live on every team's screen. Answers are hidden
-            from you until you close — same rule as a pounce, for the same reason.
+            Every team has one answer sheet open and is numbering its answers on
+            it. Sheets are hidden from you until you close collection — same rule
+            as a pounce, for the same reason.
           </p>
         )}
 
@@ -761,6 +762,12 @@ function WrittenPanel({ view, act }: { view: QmView; act: (a: Action) => void })
 
       {grading && (
         <Panel title="Grading">
+          <p className="mb-3 text-xs text-neutral-500">
+            Teams write on one sheet, so the same sheet appears under every
+            question — read the line for the question you are on. Grade a
+            question across all teams before moving to the next one; that is the
+            only way to be consistent about what counts as close enough.
+          </p>
           <div className="space-y-4">
             {written.questions.map((q) => (
               <div key={q.id}>
@@ -774,11 +781,13 @@ function WrittenPanel({ view, act }: { view: QmView; act: (a: Action) => void })
                   {written.answers
                     .filter((a) => a.questionId === q.id)
                     .map((a) => (
-                      <li key={a.teamId} className="flex items-center gap-2 text-sm">
-                        <span className="w-24 shrink-0">{a.teamName}</span>
+                      <li key={a.teamId} className="flex items-start gap-2 text-sm">
+                        <span className="w-24 shrink-0 py-1">{a.teamName}</span>
                         <span className="flex-1">
                           {a.text ? (
-                            <span className="whitespace-pre-wrap">{a.text}</span>
+                            <span className="block max-h-32 overflow-y-auto rounded bg-neutral-50 px-2 py-1 font-mono text-xs whitespace-pre-wrap">
+                              {a.text}
+                            </span>
                           ) : (
                             <em className="text-neutral-400">no answer</em>
                           )}

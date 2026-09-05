@@ -156,7 +156,9 @@ are not always equally weighted.
 
 ```
 IDLE → Q1_SHOWN → Q2_SHOWN → Q3_SHOWN → Q4_SHOWN
-     → COLLECTING (all four answer boxes live for teams)
+     → COLLECTING (one answer sheet live for teams — a single box they number
+       their answers on, submitted against every question so the QM can still
+       grade question by question)
      → SUBMITTED (QM closes; answers locked)
      → EVALUATING (QM grades question-by-question, all teams at once)
      → REVEALED

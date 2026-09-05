@@ -227,12 +227,6 @@ function TeamScreen({ view, onLeave }: { view: TeamView; onLeave: () => void }) 
         </div>
       </header>
 
-      {view.you.present.length > 1 && (
-        <p className="mb-3 text-xs text-neutral-500">
-          Here: {view.you.present.join(', ')}
-        </p>
-      )}
-
       {error && (
         <div className="mb-3 rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
           {error}
@@ -260,7 +254,12 @@ function TeamScreen({ view, onLeave }: { view: TeamView; onLeave: () => void }) 
           <RevealCard view={view} />
         </>
       )}
-      <Scoreboard view={view} />
+      {/* Scores and attendance read together: who is here, and where they are.
+          Side by side on anything wider than a phone, stacked below that. */}
+      <div className="grid gap-3 sm:grid-cols-2">
+        <Scoreboard view={view} />
+        <PresenceBox view={view} />
+      </div>
     </div>
   );
 }
@@ -465,33 +464,69 @@ function RevealCard({ view }: { view: TeamView }) {
  */
 function Scoreboard({ view }: { view: TeamView }) {
   return (
-    <div className="rounded border border-neutral-200 bg-white p-4">
+    <div className="rounded border border-neutral-200 bg-white p-3">
       <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-neutral-500">
         Live scoreboard
       </p>
-      <ol className="space-y-1">
+      <ol className="space-y-0.5">
         {view.standings.map((team, i) => (
           <li
             key={team.teamId}
-            className={`flex items-baseline justify-between rounded px-2 py-1 ${
+            className={`flex items-baseline justify-between rounded px-1.5 py-0.5 text-sm ${
               team.teamId === view.you.teamId ? 'bg-blue-50 font-semibold' : ''
             }`}
           >
-            <span>
-              <span className="mr-2 font-mono text-xs text-neutral-400">{i + 1}</span>
+            <span className="truncate">
+              <span className="mr-1.5 font-mono text-xs text-neutral-400">{i + 1}</span>
               {team.name}
               {team.teamId === view.you.teamId && (
                 <span className="ml-1 text-xs text-blue-700">you</span>
               )}
             </span>
-            <span className="font-mono text-lg tabular-nums">{team.score}</span>
+            <span className="font-mono text-base tabular-nums">{team.score}</span>
           </li>
         ))}
       </ol>
       <p className="mt-2 text-xs text-neutral-500">
-        Updates as the quizmaster scores. Partial credit appears when the answer
-        is revealed.
+        Partial credit appears when the answer is revealed.
       </p>
+    </div>
+  );
+}
+
+/**
+ * Who is here.
+ *
+ * The same list the quizmaster has. Attendance is not secret — everyone is on
+ * the same call — and it answers the question every screen in the room is
+ * silently asking before a round starts: are we still waiting for someone?
+ */
+function PresenceBox({ view }: { view: TeamView }) {
+  return (
+    <div className="rounded border border-neutral-200 bg-white p-3">
+      <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-neutral-500">
+        Who is here
+      </p>
+      <ul className="space-y-0.5">
+        {view.presence.map((t) => {
+          const you = t.teamId === view.you.teamId;
+          return (
+            <li
+              key={t.teamId}
+              className={`flex items-baseline justify-between gap-2 rounded px-1.5 py-0.5 text-sm ${
+                you ? 'bg-blue-50 font-semibold' : ''
+              }`}
+            >
+              <span className={t.members.length === 0 ? 'text-neutral-400' : ''}>
+                {t.teamName}
+              </span>
+              <span className="truncate text-right text-xs text-neutral-500">
+                {t.members.length === 0 ? 'not connected' : t.members.join(', ')}
+              </span>
+            </li>
+          );
+        })}
+      </ul>
     </div>
   );
 }
@@ -509,29 +544,95 @@ function Centre({ children }: { children: React.ReactNode }) {
 /**
  * A written round, from a team's side — FORMAT_SPEC §2.2.
  *
- * Four questions are read out one at a time, then every box goes live at once
- * and the team fills them in together. Staking is the interesting bit: +15 if
- * right, −5 if wrong, instead of +10/0. It is declared per answer and locks
- * when the QM closes the round, so the UI has to make "locked" obvious.
+ * ONE answer sheet. The questions are read out one at a time in the box above
+ * and keep changing; the box below them does not. That is how a written round
+ * works on paper, and it is why there is no second box — a team writes
+ * "1. … 2. …" in one place rather than tabbing between four fields while the
+ * quizmaster is still reading the third question.
+ *
+ * The sheet is submitted against every question the QM has reached, so grading
+ * stays question-by-question on the QM's side without the team ever seeing more
+ * than one box. The stake is the one thing that is still per question, because
+ * the stake IS per question: +15 / −5 instead of +10 / 0, and collapsing it
+ * would lose the rule rather than simplify it.
  */
 function WrittenRound({ view }: { view: TeamView }) {
   const written = view.written;
   const send = useLive((s) => s.send);
-  const [drafts, setDrafts] = useState<Record<string, { text: string; staked: boolean }>>({});
+  const [local, setLocal] = useState('');
+  const typingRef = useRef(0);
+  /**
+   * What has already gone out, per question.
+   *
+   * Blur and the save button both fire on a click, and the server's echo has
+   * not come back in between — so without this the same sheet is submitted
+   * twice and the action log, which is the crash-recovery record, grows a
+   * duplicate for every save.
+   */
+  const sentRef = useRef(new Map<string, string>());
+
+  /**
+   * The sheet as the server has it.
+   *
+   * Every question carries the same text, so the first non-empty one is the
+   * sheet. It is per team, not per person, which is what makes this shared
+   * between three people in three cities with no extra plumbing.
+   */
+  const savedSheet = written?.yourAnswers.find((a) => a.text.trim() !== '')?.text ?? '';
+
+  // Take a teammate's edit, unless this person is mid-sentence.
+  useEffect(() => {
+    if (Date.now() - typingRef.current > 1500) setLocal(savedSheet);
+  }, [savedSheet]);
+
+  const questionCount = written?.questions.length ?? 0;
+  const open = written?.collecting ?? false;
+
+  /**
+   * A question the QM reaches AFTER the sheet was written still needs the sheet
+   * attached to it, or there is nothing under it to grade. Fires when the QM
+   * moves on, not while anyone is typing.
+   */
+  useEffect(() => {
+    if (!open || !written || !local.trim()) return;
+    for (const q of written.questions) {
+      if (written.yourAnswers.some((a) => a.questionId === q.id)) continue;
+      if (sentRef.current.get(q.id) === `-${local}`) continue;
+      sentRef.current.set(q.id, `-${local}`);
+      send({ type: 'WRITTEN_ANSWER', questionId: q.id, text: local, staked: false });
+    }
+    // Deliberately not keyed on `local`: this is about the question list growing.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [questionCount, open]);
 
   if (!written) return null;
 
-  const answerFor = (questionId: string) => {
-    const saved = written.yourAnswers.find((a) => a.questionId === questionId);
-    return drafts[questionId] ?? { text: saved?.text ?? '', staked: saved?.staked ?? false };
+  const stakedIds = new Set(
+    written.yourAnswers.filter((a) => a.staked).map((a) => a.questionId),
+  );
+  const dirty = local !== savedSheet;
+  const graded = written.yourAnswers.filter((a) => a.verdict);
+
+  /** Write the sheet to every question the QM has reached. */
+  const push = (text: string, staked: Set<string>) => {
+    for (const q of written.questions) {
+      const existing = written.yourAnswers.find((a) => a.questionId === q.id);
+      const wantStaked = staked.has(q.id);
+      if (!existing && !text.trim() && !wantStaked) continue;
+      if (existing && existing.text === text && existing.staked === wantStaked) continue;
+      const signature = `${wantStaked ? 'S' : '-'}${text}`;
+      if (sentRef.current.get(q.id) === signature) continue;
+      sentRef.current.set(q.id, signature);
+      send({ type: 'WRITTEN_ANSWER', questionId: q.id, text, staked: wantStaked });
+    }
   };
 
-  const save = (questionId: string, next: { text: string; staked: boolean }) => {
-    setDrafts((d) => ({ ...d, [questionId]: next }));
-    send({ type: 'WRITTEN_ANSWER', questionId, text: next.text, staked: next.staked });
+  const toggleStake = (questionId: string) => {
+    const next = new Set(stakedIds);
+    if (next.has(questionId)) next.delete(questionId);
+    else next.add(questionId);
+    push(local, next);
   };
-
-  const open = written.collecting;
 
   return (
     <div className="mb-3 space-y-3">
@@ -556,88 +657,113 @@ function WrittenRound({ view }: { view: TeamView }) {
         )}
       </div>
 
-      <div className="rounded border border-neutral-200 bg-white p-3 text-sm">
-        {open ? (
-          <p>
-            Answer any of them at any time — the boxes below stay put as the
-            questions change. <strong>Stake</strong> one if you are confident:
-            <strong> +15</strong> if right, <strong>−5</strong> if wrong, instead
-            of +10 / 0. Any team member can type; the last edit wins.
+      {/* The answer sheet. One box, however many questions there are. */}
+      <div className="rounded border border-neutral-200 bg-white p-4">
+        <div className="mb-1 flex items-baseline justify-between gap-2">
+          <p className="text-xs font-semibold tracking-wide text-neutral-500 uppercase">
+            Your answer sheet
           </p>
+          <p className="text-xs text-neutral-500">
+            {!open ? 'locked' : dirty ? 'not saved yet' : savedSheet ? 'saved' : ''}
+          </p>
+        </div>
+
+        <textarea
+          className="w-full rounded border border-neutral-300 bg-white px-3 py-2 text-neutral-900 disabled:bg-neutral-50 disabled:text-neutral-500"
+          rows={8}
+          value={local}
+          disabled={!open}
+          placeholder={'1.\n2.\n3.\n4.'}
+          onChange={(e) => {
+            setLocal(e.target.value);
+            typingRef.current = Date.now();
+          }}
+          onBlur={() => push(local, stakedIds)}
+        />
+
+        {open ? (
+          <>
+            <button
+              onClick={() => push(local, stakedIds)}
+              disabled={!dirty}
+              className="mt-2 w-full rounded bg-neutral-900 px-3 py-2 text-white disabled:opacity-40"
+            >
+              {dirty ? 'Save answers' : 'Saved'}
+            </button>
+            <p className="mt-2 text-xs text-neutral-600">
+              Number your answers and write them all here. You can keep editing
+              until the quizmaster closes the sheet. Any team member can type;
+              the last edit wins.
+            </p>
+          </>
         ) : (
-          <p className="text-neutral-600">
-            Answers are locked. The quizmaster is grading them now.
+          <p className="mt-2 text-sm text-neutral-600">
+            The sheet is closed. The quizmaster is grading it now.
           </p>
         )}
       </div>
 
-      {/* The answer boxes. These do NOT change as the questions do. */}
-      {written.questions.map((q) => {
-        const current = answerFor(q.id);
-        const saved = written.yourAnswers.find((a) => a.questionId === q.id);
-        const isCurrent = written.currentQuestion?.id === q.id;
-        return (
-          <div
-            key={q.id}
-            className={`rounded border bg-white p-4 ${
-              isCurrent ? 'border-neutral-400' : 'border-neutral-200'
-            }`}
-          >
-            <div className="mb-1 flex items-baseline justify-between">
-              <p className="text-xs font-semibold tracking-wide text-neutral-500 uppercase">
-                Answer {q.index + 1}
-              </p>
-              {isCurrent && <span className="text-xs text-neutral-500">being read now</span>}
-            </div>
-            <p className="mb-2 text-sm text-neutral-600">{q.text}</p>
-
-            <textarea
-              className="w-full rounded border border-neutral-300 bg-white px-3 py-2 text-neutral-900"
-              rows={2}
-              value={current.text}
-              disabled={!open}
-              placeholder="Your answer"
-              onChange={(e) =>
-                setDrafts((d) => ({ ...d, [q.id]: { ...current, text: e.target.value } }))
-              }
-              onBlur={() => save(q.id, current)}
-            />
-
-            <label className="mt-2 flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
-                checked={current.staked}
-                disabled={!open}
-                onChange={(e) => save(q.id, { ...current, staked: e.target.checked })}
-              />
-              <span>
-                Stake this one <span className="text-neutral-500">(+15 / −5)</span>
-              </span>
-            </label>
-
-            {saved?.verdict && (
-              <p
-                className={`mt-2 text-sm font-semibold ${
-                  saved.verdict === 'CORRECT' ? 'text-green-700' : 'text-red-700'
-                }`}
-              >
-                {saved.verdict === 'CORRECT'
-                  ? saved.staked
-                    ? 'Correct — +15'
-                    : 'Correct — +10'
-                  : saved.staked
-                    ? 'Wrong — −5'
-                    : 'Wrong'}
-              </p>
-            )}
+      {/* Staking. Per question, because the rule is per question. */}
+      {written.questions.length > 0 && (
+        <div className="rounded border border-neutral-200 bg-white p-3">
+          <p className="mb-2 text-xs font-semibold tracking-wide text-neutral-500 uppercase">
+            Stake
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {written.questions.map((q) => {
+              const on = stakedIds.has(q.id);
+              return (
+                <button
+                  key={q.id}
+                  disabled={!open}
+                  onClick={() => toggleStake(q.id)}
+                  className={`rounded border px-3 py-1 text-sm disabled:opacity-60 ${
+                    on
+                      ? 'border-amber-500 bg-amber-50 font-semibold text-amber-900'
+                      : 'border-neutral-300 text-neutral-600'
+                  }`}
+                >
+                  Q{q.index + 1}
+                  {on && ' staked'}
+                </button>
+              );
+            })}
           </div>
-        );
-      })}
+          <p className="mt-2 text-xs text-neutral-600">
+            Staked: <strong>+15</strong> if right, <strong>−5</strong> if wrong.
+            Unstaked: +10 / 0. Locks when the sheet closes.
+          </p>
+        </div>
+      )}
 
-      {written.questions.length === 0 && (
-        <p className="text-sm text-neutral-500">
-          Answer boxes appear as the quizmaster reads each question.
-        </p>
+      {/* Results, once the quizmaster has graded. Read-only. */}
+      {graded.length > 0 && (
+        <div className="rounded border border-neutral-200 bg-white p-3">
+          <p className="mb-2 text-xs font-semibold tracking-wide text-neutral-500 uppercase">
+            Marked
+          </p>
+          <ul className="space-y-1 text-sm">
+            {written.questions.map((q) => {
+              const answer = written.yourAnswers.find((a) => a.questionId === q.id);
+              if (!answer?.verdict) return null;
+              const right = answer.verdict === 'CORRECT';
+              return (
+                <li key={q.id} className="flex items-baseline justify-between gap-2">
+                  <span>Q{q.index + 1}</span>
+                  <span className={right ? 'text-green-700' : 'text-red-700'}>
+                    {right
+                      ? answer.staked
+                        ? 'Correct — +15'
+                        : 'Correct — +10'
+                      : answer.staked
+                        ? 'Wrong — −5'
+                        : 'Wrong'}
+                  </span>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
       )}
     </div>
   );

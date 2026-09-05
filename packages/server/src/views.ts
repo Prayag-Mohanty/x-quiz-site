@@ -343,6 +343,15 @@ export function buildTeamView(
 
     draft: ctx.drafts.get(viewer.teamId) ?? EMPTY_DRAFT,
 
+    // Who has turned up. Same list the QM sees, and for the same reason: it is
+    // the answer to "are we waiting for someone?", which every screen in the
+    // room asks. Nothing here is withheld from anyone.
+    presence: state.teams.map((t) => ({
+      teamId: t.id,
+      teamName: t.name,
+      members: ctx.presence.get(t.id) ?? [],
+    })),
+
     // Public score only. A withheld partial is invisible here by construction:
     // publicScore() sums APPLIED events and nothing else.
     standings: publicStandings(state),
