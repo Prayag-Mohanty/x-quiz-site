@@ -76,6 +76,12 @@ install a permanent one.
 The authoring screen has a **Run this quiz** panel with your console link, the scoreboard
 link, and one join code per team.
 
+Question and answer text take simple inline formatting — `**bold**`, `*italic*`,
+`_underline_` — with B / I / U buttons over each field. The markers are stored as plain
+text, so a question written before they existed is still a valid question, and one written
+with them is still readable in `psql`. An unclosed marker stays literal, so `2 * 3` and
+`snake_case` mean what they say.
+
 ### Letting other people in
 
 The setup above answers only to the machine it runs on, which is right for

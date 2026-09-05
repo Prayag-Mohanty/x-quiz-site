@@ -53,9 +53,13 @@ export function QuestionEditor() {
       }
     >
       <div className="space-y-4">
-        <Field label="Question text" hint="Always required — every question has a text body.">
+        <Field
+          label="Question text"
+          hint="Always required. B / I / U format the selection; the markers are stored as plain text."
+        >
           <EditableText
             multiline
+            formatting
             value={question.body}
             placeholder="What the teams are asked…"
             onSave={(body) => void mutate(() => api.updateQuestion(question.id, { body }))}
@@ -65,6 +69,7 @@ export function QuestionEditor() {
         <Field label="Answer">
           <EditableText
             multiline
+            formatting
             value={question.answer_text}
             placeholder="The answer, as you will read it out…"
             onSave={(answer_text) =>

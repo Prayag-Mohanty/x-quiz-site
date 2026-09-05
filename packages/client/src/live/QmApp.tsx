@@ -21,6 +21,7 @@ import { useEffect } from 'react';
 import type { Action } from '@quizmaster/engine';
 import type { QmView } from '@quizmaster/shared';
 
+import { Rich } from './Rich.js';
 import { clearSession, loadSession, saveSession, socketUrl, useLive, type StoredSession } from './socket.js';
 import { useState } from 'react';
 
@@ -543,7 +544,9 @@ function QuestionPanel({ view }: { view: QmView }) {
         ) : null
       }
     >
-      <p className="whitespace-pre-wrap text-lg">{view.question.text}</p>
+      <p className="text-lg whitespace-pre-wrap">
+        <Rich text={view.question.text} />
+      </p>
       {view.question.media.map((m) =>
         m.kind === 'IMAGE' ? <img key={m.id} src={m.url} alt="" className="mt-2 max-h-64 rounded" /> : null,
       )}
@@ -552,7 +555,9 @@ function QuestionPanel({ view }: { view: QmView }) {
       {view.answer && (
         <div className="mt-3 rounded border border-amber-200 bg-amber-50 p-3">
           <p className="text-xs font-semibold uppercase text-amber-800">Answer — yours only</p>
-          <p className="mt-1 whitespace-pre-wrap">{view.answer.text}</p>
+          <p className="mt-1 whitespace-pre-wrap">
+            <Rich text={view.answer.text} />
+          </p>
           {view.answer.parts.length > 1 && (
             <ul className="mt-2 space-y-1 text-sm">
               {view.answer.parts.map((p) => (
@@ -927,7 +932,9 @@ function ConnectPanel({ view, act }: { view: QmView; act: (a: Action) => void })
             <p className="text-xs font-semibold uppercase text-amber-800">
               The connection — yours only
             </p>
-            <p className="mt-1 whitespace-pre-wrap">{view.answer.text}</p>
+            <p className="mt-1 whitespace-pre-wrap">
+              <Rich text={view.answer.text} />
+            </p>
           </div>
         )}
       </Panel>
@@ -1018,7 +1025,7 @@ function WrittenPanel({ view, act }: { view: QmView; act: (a: Action) => void })
               Showing question {written.shownIdx + 1} of {written.questions.length}
             </p>
             <p className="text-lg whitespace-pre-wrap">
-              {written.questions[written.shownIdx]?.text}
+              <Rich text={written.questions[written.shownIdx]?.text ?? ''} />
             </p>
             <p className="mt-2 rounded bg-amber-50 px-2 py-1 text-sm">
               <span className="font-semibold">Answer: </span>

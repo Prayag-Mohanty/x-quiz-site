@@ -3,7 +3,9 @@
  * panels below stay readable.
  */
 
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
+
+import { toggleMark, type Mark } from '../richtext.js';
 
 export function Button({
   children,
@@ -58,15 +60,19 @@ export function EditableText({
   onSave,
   placeholder,
   multiline,
+  formatting,
   className = '',
 }: {
   value: string;
   onSave: (next: string) => void;
   placeholder?: string;
   multiline?: boolean;
+  /** Show bold/italic/underline controls. Multiline fields only. */
+  formatting?: boolean;
   className?: string;
 }) {
   const [draft, setDraft] = useState(value);
+  const box = useRef<HTMLTextAreaElement>(null);
 
   // Resync when the server sends back something different from what was typed
   // — a rejected write, or a value it normalised.
@@ -80,13 +86,37 @@ export function EditableText({
 
   if (multiline) {
     return (
-      <textarea
-        className={`${shared} min-h-20 font-mono`}
-        value={draft}
-        placeholder={placeholder ?? ''}
-        onChange={(e) => setDraft(e.target.value)}
-        onBlur={commit}
-      />
+      <div>
+        {formatting && (
+          <FormatBar
+            textarea={box}
+            value={draft}
+            onChange={(next, start, end) => {
+              setDraft(next);
+              // Restore the selection after React has written the new value,
+              // or the caret lands at the end and the next press wraps the
+              // wrong thing.
+              requestAnimationFrame(() => {
+                const el = box.current;
+                if (!el) return;
+                el.focus();
+                el.setSelectionRange(start, end);
+              });
+            }}
+            onCommit={(next) => {
+              if (next !== value) onSave(next);
+            }}
+          />
+        )}
+        <textarea
+          ref={box}
+          className={`${shared} min-h-20 font-mono`}
+          value={draft}
+          placeholder={placeholder ?? ''}
+          onChange={(e) => setDraft(e.target.value)}
+          onBlur={commit}
+        />
+      </div>
     );
   }
   return (
@@ -133,5 +163,63 @@ export function AddForm({
       />
       <Button type="submit">{label}</Button>
     </form>
+  );
+}
+
+/**
+ * Bold, italic, underline.
+ *
+ * The markers are plain text in the stored question — `**bold**` — so this is
+ * a convenience over typing them, not a different representation. That matters:
+ * a question written before these buttons existed is still a valid question,
+ * and one written with them is still readable in psql.
+ *
+ * Wraps whatever is selected, and toggles off if it is already wrapped. With
+ * nothing selected it inserts the pair for you to type between.
+ */
+function FormatBar({
+  textarea,
+  value,
+  onChange,
+  onCommit,
+}: {
+  textarea: React.RefObject<HTMLTextAreaElement>;
+  value: string;
+  onChange: (next: string, start: number, end: number) => void;
+  onCommit: (next: string) => void;
+}) {
+  const apply = (mark: Mark) => {
+    const el = textarea.current;
+    if (!el) return;
+    const result = toggleMark(value, el.selectionStart, el.selectionEnd, mark);
+    onChange(result.text, result.start, result.end);
+    onCommit(result.text);
+  };
+
+  const buttons: { mark: Mark; label: string; className: string; title: string }[] = [
+    { mark: 'bold', label: 'B', className: 'font-bold', title: 'Bold  **like this**' },
+    { mark: 'italic', label: 'I', className: 'italic', title: 'Italic  *like this*' },
+    { mark: 'underline', label: 'U', className: 'underline', title: 'Underline  _like this_' },
+  ];
+
+  return (
+    <div className="mb-1 flex gap-1">
+      {buttons.map((b) => (
+        <button
+          key={b.mark}
+          type="button"
+          // onMouseDown, not onClick: clicking a button blurs the textarea and
+          // takes the selection with it, and the selection is the whole input.
+          onMouseDown={(e) => {
+            e.preventDefault();
+            apply(b.mark);
+          }}
+          title={b.title}
+          className={`h-7 w-7 rounded border border-neutral-300 text-sm text-neutral-700 hover:bg-neutral-100 ${b.className}`}
+        >
+          {b.label}
+        </button>
+      ))}
+    </div>
   );
 }

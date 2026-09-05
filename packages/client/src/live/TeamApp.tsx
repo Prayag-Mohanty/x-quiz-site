@@ -1,9 +1,14 @@
 /**
  * The team client.
  *
- * What up to three people in three different cities look at during a quiz. It
- * has to work on a phone, so it is one column, and the thing that matters right
- * now is always at the top.
+ * What up to three people in three different cities look at during a quiz.
+ *
+ * Two layouts, one component tree. On a phone it is one column with the thing
+ * that matters most at the top. On a desktop the question takes the width it
+ * deserves — it is what everyone is reading — and the scoreboard, attendance
+ * and team notes move into a sidebar beside it rather than below the fold.
+ * The breakpoint is `lg`, so tablets get the phone layout, which is right:
+ * a narrow window is a narrow window.
  *
  * The three jobs it does that a Meet call plus WhatsApp cannot:
  *   - a pounce that nobody else can see, submitted by any member
@@ -14,6 +19,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { TeamView } from '@quizmaster/shared';
 
+import { Rich } from './Rich.js';
 import {
   clearSession,
   loadSession,
@@ -211,15 +217,23 @@ function JoinForm({ onJoined }: { onJoined: (s: StoredSession) => void }) {
 
 // ─── Playing ────────────────────────────────────────────────────────────────
 
+/**
+ * The slide header: deep navy, white text.
+ *
+ * One constant because the question, the written sheet and the reveal all wear
+ * it, and three hand-written hexes drift apart the first time one is tweaked.
+ */
+const SLIDE_HEADER = 'bg-[#1b0a63] text-white';
+
 function TeamScreen({ view, onLeave }: { view: TeamView; onLeave: () => void }) {
   const status = useLive((s) => s.status);
   const error = useLive((s) => s.error);
 
   return (
-    <div className="mx-auto min-h-screen max-w-2xl bg-neutral-50 p-3 pb-24">
+    <div className="mx-auto min-h-screen max-w-7xl bg-neutral-50 p-3 pb-24 lg:p-6">
       <header className="mb-3 flex items-baseline justify-between gap-2">
         <div>
-          <h1 className="text-base font-semibold">{view.you.teamName}</h1>
+          <h1 className="text-base font-semibold lg:text-lg">{view.you.teamName}</h1>
           <p className="text-xs text-neutral-500">
             {view.quizTitle}
             {view.round ? ` · ${view.round.title}` : ''}
@@ -239,33 +253,42 @@ function TeamScreen({ view, onLeave }: { view: TeamView; onLeave: () => void }) 
         </div>
       )}
 
-      {/* The bounce reaching you is the single most urgent thing on this screen. */}
+      {/* The bounce reaching you is the single most urgent thing on this screen,
+          so it spans the whole width and sits above everything else. */}
       {view.bounce.onYou && (
         <div className="mb-3 rounded border-2 border-green-600 bg-green-50 px-4 py-3">
-          <p className="text-lg font-semibold text-green-900">Your turn — answer out loud.</p>
+          <p className="text-lg font-semibold text-green-900 lg:text-xl">
+            Your turn — answer out loud.
+          </p>
           <p className="text-sm text-green-800">
             No penalty for a wrong answer on the bounce.
           </p>
         </div>
       )}
-      <TeamBounceOrder view={view} />
 
-      {view.written ? (
-        <WrittenRound view={view} />
-      ) : (
-        <>
-          <ConnectStrip view={view} />
-          <QuestionCard view={view} />
-          <PounceBox view={view} />
+      <div className="grid gap-3 lg:grid-cols-[1fr_20rem] lg:items-start lg:gap-6">
+        {/* The question and everything you do about it. */}
+        <div className="min-w-0">
+          <TeamBounceOrder view={view} />
+          {view.written ? (
+            <WrittenRound view={view} />
+          ) : (
+            <>
+              <ConnectStrip view={view} />
+              <QuestionCard view={view} />
+              <PounceBox view={view} />
+              <RevealCard view={view} />
+            </>
+          )}
+        </div>
+
+        {/* Everything you glance at. On a phone this falls below the question,
+            which is the same priority order stacked instead of side by side. */}
+        <div className="space-y-3">
           <DraftBox view={view} />
-          <RevealCard view={view} />
-        </>
-      )}
-      {/* Scores and attendance read together: who is here, and where they are.
-          Side by side on anything wider than a phone, stacked below that. */}
-      <div className="grid gap-3 sm:grid-cols-2">
-        <Scoreboard view={view} />
-        <PresenceBox view={view} />
+          <Scoreboard view={view} />
+          <PresenceBox view={view} />
+        </div>
       </div>
     </div>
   );
@@ -282,28 +305,48 @@ function ConnectionDot({ status }: { status: string }) {
   );
 }
 
+/**
+ * The question, as a slide.
+ *
+ * Navy bar with the number, white body with the text, and the text set large —
+ * this is what everyone in the room is reading, and on a desktop it should look
+ * like the slide it replaces rather than a paragraph in a phone app. The size
+ * steps down on narrow screens because a phone cannot afford 30px type.
+ */
 function QuestionCard({ view }: { view: TeamView }) {
   if (!view.question) {
     return (
-      <div className="mb-3 rounded border border-neutral-200 bg-white p-6 text-center text-sm text-neutral-500">
-        Waiting for the quizmaster.
+      <div className="mb-3 overflow-hidden rounded-lg border border-neutral-200 bg-white">
+        <div className={`${SLIDE_HEADER} px-5 py-4`}>
+          <p className="text-lg font-bold">·</p>
+        </div>
+        <p className="p-10 text-center text-sm text-neutral-500">
+          Waiting for the quizmaster.
+        </p>
       </div>
     );
   }
   return (
-    <div className="mb-3 rounded border border-neutral-200 bg-white p-4">
-      <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-neutral-500">
-        Question {view.question.index + 1} of {view.question.total}
-        {view.question.partCount > 1 && ` · ${view.question.partCount} parts`}
+    <div className="mb-3 overflow-hidden rounded-lg border border-neutral-200 bg-white">
+      <div className={`${SLIDE_HEADER} flex items-baseline justify-between gap-3 px-5 py-4`}>
+        <p className="text-2xl font-bold lg:text-3xl">{view.question.index + 1}.</p>
+        <p className="text-xs tracking-wide text-white/70 uppercase">
+          Question {view.question.index + 1} of {view.question.total}
+          {view.question.partCount > 1 && ` · ${view.question.partCount} parts`}
+        </p>
+      </div>
+      <div className="p-5 lg:p-8">
+      <p className="text-lg leading-relaxed whitespace-pre-wrap lg:text-2xl lg:leading-relaxed">
+        <Rich text={view.question.text} />
       </p>
-      <p className="text-lg whitespace-pre-wrap">{view.question.text}</p>
       {view.question.media.map((m) =>
         m.kind === 'IMAGE' ? (
-          <img key={m.id} src={m.url} alt="" className="mt-3 max-w-full rounded" />
+          <img key={m.id} src={m.url} alt="" className="mt-4 max-w-full rounded" />
         ) : (
-          <audio key={m.id} src={m.url} controls className="mt-3 w-full" />
+          <audio key={m.id} src={m.url} controls className="mt-4 w-full" />
         ),
       )}
+      </div>
     </div>
   );
 }
@@ -471,14 +514,21 @@ function DraftBox({ view }: { view: TeamView }) {
 function RevealCard({ view }: { view: TeamView }) {
   if (!view.reveal) return null;
   return (
-    <div className="mb-3 rounded border border-green-300 bg-green-50 p-4">
-      <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-green-800">Answer</p>
-      <p className="whitespace-pre-wrap text-lg">{view.reveal.text}</p>
+    <div className="mb-3 overflow-hidden rounded-lg border border-green-300 bg-white">
+      {/* Same shape as the question, different colour: it is the other slide. */}
+      <div className="bg-green-800 px-5 py-3 text-xs font-semibold tracking-wide text-white uppercase">
+        Answer
+      </div>
+      <div className="p-5 lg:p-8">
+      <p className="text-lg leading-relaxed whitespace-pre-wrap lg:text-2xl lg:leading-relaxed">
+        <Rich text={view.reveal.text} />
+      </p>
       {view.reveal.media.map((m) =>
         m.kind === 'IMAGE' ? (
-          <img key={m.id} src={m.url} alt="" className="mt-3 max-w-full rounded" />
+          <img key={m.id} src={m.url} alt="" className="mt-4 max-w-full rounded" />
         ) : null,
       )}
+      </div>
     </div>
   );
 }
@@ -665,24 +715,29 @@ function WrittenRound({ view }: { view: TeamView }) {
   return (
     <div className="mb-3 space-y-3">
       {/* The question being read out. This is the part that changes. */}
-      <div className="rounded border-2 border-neutral-300 bg-white p-4">
-        <p className="mb-1 text-xs font-semibold tracking-wide text-neutral-500 uppercase">
-          {written.currentQuestion
-            ? `Question ${written.currentQuestion.index + 1}`
-            : 'Written round'}
-        </p>
+      <div className="overflow-hidden rounded-lg border border-neutral-200 bg-white">
+        <div className={`${SLIDE_HEADER} flex items-baseline justify-between gap-3 px-5 py-4`}>
+          <p className="text-2xl font-bold lg:text-3xl">
+            {written.currentQuestion ? `${written.currentQuestion.index + 1}.` : '·'}
+          </p>
+          <p className="text-xs tracking-wide text-white/70 uppercase">Written round</p>
+        </div>
+        <div className="p-5 lg:p-8">
         {written.currentQuestion ? (
           <>
-            <p className="text-lg whitespace-pre-wrap">{written.currentQuestion.text}</p>
+            <p className="text-lg leading-relaxed whitespace-pre-wrap lg:text-2xl lg:leading-relaxed">
+              <Rich text={written.currentQuestion.text} />
+            </p>
             {written.currentQuestion.media.map((m) =>
               m.kind === 'IMAGE' ? (
-                <img key={m.id} src={m.url} alt="" className="mt-3 max-w-full rounded" />
+                <img key={m.id} src={m.url} alt="" className="mt-4 max-w-full rounded" />
               ) : null,
             )}
           </>
         ) : (
           <p className="text-sm text-neutral-500">Waiting for the quizmaster.</p>
         )}
+        </div>
       </div>
 
       {/* The answer sheet. One box, however many questions there are. */}
