@@ -1,21 +1,17 @@
 # Quizmaster
 
 An online quiz platform for **finals-format quizzing** — one application replacing the
-current stack of Meet + slides + Google Forms + WhatsApp + Google Sheets.
+current stack of Meet + slides + Google Forms + WhatsApp + Google Sheets. 
 
 ## The problem
 
-Online quizzing today is spread across four platforms. Questions are screenshared from
+Online competitive quizzing today spans four platforms. Questions are screenshared from
 slides, answers arrive via Google Forms, pounces come as private WhatsApp messages, scores
 live in a spreadsheet, and teammates in different cities coordinate over a separate call.
 The QM needs a team of volunteers just to keep track. This collapses all of it into one
-screen.
+screen. This is my take on streamlining pounces online.
 
-## What it is not
-
-This does **not** solve cheating. Nothing that runs in a browser can — participants have
-phones, second laptops, and friends on muted calls. The product solves coordination.
-
+The product solves coordination.This does **not** solve cheating/googling.
 ## Start here
 
 | Document | What it covers |
