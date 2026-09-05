@@ -758,6 +758,12 @@ export function reduce(state: QuizState, action: Action): QuizState {
   // Cross-cutting actions, legal in any phase.
   switch (action.type) {
     case 'MANUAL_ADJUST': {
+      // FORMAT_SPEC §5.5: allowed, and never unexplained. The schema enforces
+      // this too; it is here as well because it is a rule about the format
+      // rather than a constraint on a column, and rules live in the reducer.
+      if (!action.note.trim()) {
+        throw new Error('A manual adjustment needs a reason');
+      }
       const round = currentRound(state);
       const event: ScoreEvent = {
         id: action.eventId,

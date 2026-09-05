@@ -78,7 +78,12 @@ export interface RuleOptions {
    * legible; set it true to restore the older assumption.
    */
   pouncersMayBounce: boolean;
-  /** §5.2 — may a team stake more than one written-round answer? */
+  /**
+   * §5.2 — may a team stake more than one written-round answer?
+   *
+   * Yes, as many as they like. Was FORMAT_SPEC §5 open question 2, answered
+   * 2026-09-06. Set false to restrict a team to one stake per round.
+   */
   multipleStakesAllowed: boolean;
   /**
    * §5.4 — does a visual connect bounce after the final reveal, or die?

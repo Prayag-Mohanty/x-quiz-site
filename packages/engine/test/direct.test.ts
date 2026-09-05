@@ -497,3 +497,77 @@ describe('REWIND_BOUNCE', () => {
     assert.throws(() => reduce(s, { type: 'REWIND_BOUNCE' }), /not legal/i);
   });
 });
+
+/**
+ * Manual adjustments — FORMAT_SPEC §5, question 5, answered yes on 2026-09-06.
+ *
+ * The escape hatch for everything the format does not model: a penalty for
+ * talking over the bounce, a correction after an argument, a tiebreak awarded
+ * by hand.
+ */
+describe('MANUAL_ADJUST', () => {
+  test('adds or subtracts points from any team, at any time', () => {
+    let s = makeState({ teams: 4 });
+    s = reduce(s, {
+      type: 'MANUAL_ADJUST',
+      teamId: 't2',
+      points: -10,
+      note: 'Talking over the bounce',
+      eventId: eid(),
+    });
+    assert.equal(publicScore(s.ledger, 't2'), -10);
+    assert.equal(s.ledger[0]?.reason, 'MANUAL_ADJUST');
+    assert.equal(s.ledger[0]?.note, 'Talking over the bounce');
+
+    // Applied, not withheld: unlike a partial there is no later reveal that
+    // would publish it, and nothing about it leaks a pending answer.
+    assert.equal(s.ledger[0]?.status, 'APPLIED');
+  });
+
+  test('refuses without a reason', () => {
+    const s = makeState({ teams: 4 });
+    for (const note of ['', '   ']) {
+      assert.throws(
+        () => reduce(s, { type: 'MANUAL_ADJUST', teamId: 't1', points: 5, note, eventId: eid() }),
+        /needs a reason/,
+        `accepted a blank note: ${JSON.stringify(note)}`,
+      );
+    }
+  });
+
+  test('works between questions, with no question in play', () => {
+    const s = reduce(makeState({ teams: 4 }), {
+      type: 'MANUAL_ADJUST',
+      teamId: 't1',
+      points: 5,
+      note: 'Tiebreak',
+      eventId: eid(),
+    });
+    assert.equal(s.active, null);
+    assert.equal(s.ledger[0]?.questionId, '');
+  });
+});
+
+/**
+ * Undoing twice.
+ *
+ * The reducer tolerates a repeat rather than rejecting it, and that is
+ * deliberate: an action log containing one is still replayable, and a real
+ * quiz produced fifteen of them in twelve seconds when the console pointed
+ * "undo last" at an event it had already voided. The console no longer sends
+ * them; this pins the behaviour that keeps that quiz's log loadable.
+ */
+test('voiding an already-voided event changes nothing', () => {
+  let s = run(makeState({ nextDirectTeamIdx: 0 }), [
+    { type: 'PRESENT_QUESTION', questionId: 'q1' },
+    { type: 'OPEN_BOUNCE' },
+    { type: 'BOUNCE_CORRECT', eventId: 'ev-1' },
+  ]);
+  s = reduce(s, { type: 'VOID_EVENT', eventId: 'ev-1' });
+  const once = JSON.stringify(s.ledger);
+
+  s = reduce(s, { type: 'VOID_EVENT', eventId: 'ev-1' });
+  s = reduce(s, { type: 'VOID_EVENT', eventId: 'ev-1' });
+  assert.equal(JSON.stringify(s.ledger), once);
+  assert.equal(s.ledger.length, 1);
+});

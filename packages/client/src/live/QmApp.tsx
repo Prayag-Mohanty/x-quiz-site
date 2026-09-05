@@ -274,6 +274,18 @@ function Console({
    * the last eligible team ends the question, and undoing that puts the same
    * team back on the spot rather than stepping anywhere.
    */
+  /**
+   * What "Undo last" actually undoes.
+   *
+   * It used to be `recent[0]`, which stays put after you undo it — a voided
+   * event is still the newest one. So the second press re-voided the same
+   * event, silently, and so did the third. In a real quiz this produced
+   * fifteen VOID_EVENTs against one award in twelve seconds: the QM could not
+   * tell it had worked, so they kept pressing. Skip what is already voided and
+   * name what is about to go.
+   */
+  const undoTarget = view.recent.find((e) => e.status !== 'VOIDED') ?? null;
+
   const offeredCount = view.bounce.order.filter((t) => t.offered).length;
   const canRewind =
     view.round?.type === 'DIRECT' &&
@@ -302,8 +314,8 @@ function Console({
       if ((e.key === 'b' || e.key === 'B') && canRewind) {
         act({ type: 'REWIND_BOUNCE' });
       }
-      if ((e.key === 'u' || e.key === 'U') && view.recent[0]) {
-        act({ type: 'VOID_EVENT', eventId: view.recent[0].eventId });
+      if ((e.key === 'u' || e.key === 'U') && undoTarget) {
+        act({ type: 'VOID_EVENT', eventId: undoTarget.eventId });
       }
     };
     window.addEventListener('keydown', onKey);
@@ -384,12 +396,17 @@ function Console({
             <span className="opacity-60">b</span>
           </button>
         )}
-        {view.recent[0] && (
+        {/* Named, so you can see what you are taking back — and gone entirely
+            when there is nothing left to take back, rather than sitting there
+            looking pressable. */}
+        {undoTarget && (
           <button
-            onClick={() => act({ type: 'VOID_EVENT', eventId: view.recent[0]!.eventId })}
+            onClick={() => act({ type: 'VOID_EVENT', eventId: undoTarget.eventId })}
             className="ml-auto rounded border border-neutral-400 px-3 py-2 text-sm"
+            title="Voids the award. The event stays in the ledger, marked undone."
           >
-            Undo last <span className="opacity-60">u</span>
+            Undo {undoTarget.teamName} {undoTarget.points > 0 ? '+' : ''}
+            {undoTarget.points} <span className="opacity-60">u</span>
           </button>
         )}
       </div>
@@ -419,6 +436,7 @@ function Console({
 
         <div className="space-y-4">
           <ScorePanel view={view} />
+          <AdjustPanel view={view} act={act} />
           <PresencePanel view={view} />
         </div>
       </div>
@@ -813,6 +831,124 @@ function ScorePanel({ view }: { view: QmView }) {
         Right-hand figures are pounces correct out of attempted — the tiebreak
         signals. The system shows them; you decide.
       </p>
+    </Panel>
+  );
+}
+
+/**
+ * A manual score adjustment — FORMAT_SPEC §5, question 5.
+ *
+ * Any team, any number of points, at any point in the quiz. Answered yes on
+ * 2026-09-06: a penalty for talking over the bounce, a correction after an
+ * argument, a tiebreak the format does not model. The engine and the schema
+ * have supported it since Phase 0; there was simply no way to reach it.
+ *
+ * The justification is mandatory, and not as a formality — the schema rejects
+ * a MANUAL_ADJUST without one. Every other row in the ledger explains itself
+ * from its reason and its question; this is the only kind that cannot, and an
+ * unexplained adjustment is what makes a final scoreboard unarguable in the
+ * wrong direction.
+ *
+ * Collapsed by default. It is the one control on this screen that should take
+ * a moment of deliberate intent rather than sitting under your thumb.
+ */
+function AdjustPanel({ view, act }: { view: QmView; act: (a: Action) => void }) {
+  const [open, setOpen] = useState(false);
+  const [teamId, setTeamId] = useState('');
+  const [points, setPoints] = useState('');
+  const [note, setNote] = useState('');
+
+  const parsed = Number(points);
+  const valid =
+    teamId !== '' && points.trim() !== '' && Number.isFinite(parsed) && parsed !== 0 && note.trim() !== '';
+
+  /**
+   * Always leave it empty.
+   *
+   * Cancelling used to close the panel and keep the values, so re-opening it
+   * showed a half-prepared adjustment with Apply already live — a stale −10
+   * against whichever team you had picked a round ago, one click from the
+   * scoreboard. This is the one control that should never be armed by default.
+   */
+  const reset = () => {
+    setTeamId('');
+    setPoints('');
+    setNote('');
+    setOpen(false);
+  };
+
+  const submit = () => {
+    if (!valid) return;
+    act({ type: 'MANUAL_ADJUST', teamId, points: parsed, note: note.trim(), eventId: '' });
+    reset();
+  };
+
+  if (!open) {
+    return (
+      <Panel title="Adjust a score">
+        <button
+          onClick={() => setOpen(true)}
+          className="w-full rounded border border-neutral-400 px-3 py-2 text-sm"
+        >
+          Add or take away points
+        </button>
+      </Panel>
+    );
+  }
+
+  return (
+    <Panel
+      title="Adjust a score"
+      aside={
+        <button onClick={reset} className="text-xs text-neutral-500 underline">
+          cancel
+        </button>
+      }
+    >
+      <div className="space-y-2">
+        <select
+          value={teamId}
+          onChange={(e) => setTeamId(e.target.value)}
+          className="w-full rounded border border-neutral-300 bg-white px-2 py-1 text-sm"
+        >
+          <option value="">Which team…</option>
+          {view.standings.map((s) => (
+            <option key={s.teamId} value={s.teamId}>
+              {s.name}
+            </option>
+          ))}
+        </select>
+
+        <input
+          type="number"
+          value={points}
+          onChange={(e) => setPoints(e.target.value)}
+          placeholder="Points — negative to penalise"
+          className="w-full rounded border border-neutral-300 bg-white px-2 py-1 text-sm"
+        />
+
+        <input
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+          placeholder="Why — required"
+          className="w-full rounded border border-neutral-300 bg-white px-2 py-1 text-sm"
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') submit();
+          }}
+        />
+
+        <button
+          onClick={submit}
+          disabled={!valid}
+          className="w-full rounded bg-neutral-900 px-3 py-2 text-sm text-white disabled:opacity-40"
+        >
+          Apply
+        </button>
+        <p className="text-xs text-neutral-500">
+          Applied immediately and visible to everyone — not withheld like a partial.
+          Undo takes it back.
+        </p>
+      </div>
     </Panel>
   );
 }

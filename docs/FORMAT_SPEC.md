@@ -160,12 +160,18 @@ scored via a distinct ledger reason so they can be identified in the breakdown.
    one.** Pouncing spends your turn on that question. The bounce runs after every
    pounce window, among the teams that did not pounce. `RuleOptions.pouncersMayBounce`
    defaults to `false`; set it true to restore the old assumption.
-2. May a team stake more than one of the four written-round answers? *Assumed YES.*
+2. ~~May a team stake more than one of the four written-round answers?~~
+   **ANSWERED (2026-09-06): YES.** A team may stake as many of its written answers as it
+   likes. `RuleOptions.multipleStakesAllowed` stays `true`; set it false to restrict.
 3. Is written-round staking per-question or one stake for the whole round? *Assumed per-question.*
 4. ~~After the final (4th) reveal of a long visual connect with no correct pounce, does the
    question simply die, or is there a bounce?~~
    **ANSWERED (2026-09-06): IT DIES.** There is no bounce anywhere in a connect. The last
    image is shown, any pounces on it are judged, and then the answer is revealed.
    `RuleOptions.connectBouncesAfterFinalReveal` stays `false`.
-5. Should the QM be able to make arbitrary manual score adjustments mid-quiz (e.g. a
-   penalty for a rules violation)? *Assumed YES; ledger supports it.*
+5. ~~Should the QM be able to make arbitrary manual score adjustments mid-quiz (e.g. a
+   penalty for a rules violation)?~~
+   **ANSWERED (2026-09-06): YES.** Any team, any number of points, at any point in the
+   quiz. It is a `MANUAL_ADJUST` ledger event and the schema requires a justification on
+   it — an unexplained adjustment is the one thing that makes a scoreboard unarguable in
+   the wrong direction.

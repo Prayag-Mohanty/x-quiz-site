@@ -200,10 +200,11 @@ another's, and withheld partials never cross the wire to a team at all.
 console and a team screen, the whole thing runs from one port through a tunnel, and there
 is a post-quiz report.
 
-**It has still not run a real quiz.** That is Phase 1's own definition of done and the
-honest gap: no test tells you whether the console is usable while you are talking to ten
-people. Everything below is verified against a real database and real sockets; none of it
-is verified against a room full of people.
+**It has now run a real quiz** — 2026-09-06, five teams, three rounds, 185 actions in the
+log. That was Phase 1's definition of done, and it earned its keep immediately: the log
+of that quiz showed the quizmaster pressing undo fifteen times in twelve seconds against
+one award, because "Undo last" pointed at an event it had already voided and said nothing.
+No test had caught it. That is what running one is for.
 
 ### Done
 
@@ -213,13 +214,12 @@ is verified against a room full of people.
 | **Direct rounds (§2.1)** | Written-blind pounce, infinite bounce with the order always on screen, partial credit recorded and withheld until the reveal, correct direct-team advancement. |
 | **Written rounds (§2.2)** | Questions read one at a time above a single answer sheet, per-question staking, a grading grid across every team. |
 | **Visual connect (§2.3)** | Staged reveals with the decay ladder on both screens, one pounce per team per connect, spent-team tracking. |
-| **Running it** | QM console, team client, live scoreboard, undo on one key, reconnection into the exact current state, five clients acting at once converging on one state. |
+| **Running it** | QM console, team client, live scoreboard, undo on one key, manual score adjustment with a mandatory reason, reconnection into the exact current state, five clients acting at once converging on one state. |
 | **Afterwards** | `/breakdown?quiz=…` — every award attributed, what each team wrote, tiebreak signals, two CSVs. |
 | **Getting people in** | One port serving everything, an access boundary that keeps the answers behind the quizmaster's token, and `docs/RUNNING.md` for LAN versus a tunnel. |
 
 ### Left
 
-- **Run a real quiz.** The only thing standing between this and "Phase 1 done".
 - **Phase 2 — media pipeline.** Object storage, transcoding, client preload before a
   round, a team-by-team "media loaded" grid, synced playback on a QM cue. Today media is
   a file on disk served over HTTP, which is fine for an image and untested for video.
@@ -233,17 +233,18 @@ is verified against a room full of people.
 
 ### Open rules
 
-`FORMAT_SPEC` §5 tracks the rules that were genuinely undecided. Three are answered and
-implemented — pouncers are out of the bounce, a connect dies after the last reveal, and
-staking is per question. Two remain assumptions: whether more than one written answer may
-be staked, and whether the QM should be able to make arbitrary mid-quiz adjustments.
+None. `FORMAT_SPEC` §5 tracked five rules that were genuinely undecided and all five are
+now answered and implemented: pouncers are out of the bounce, a connect dies after the
+final reveal, staking is per question, a team may stake as many written answers as it
+likes, and the QM may adjust any score at any time — with a reason, which the reducer and
+the schema both insist on.
 
 ### Test suites
 
 ```
-cd packages/engine && npm test    # 60 — the state machine, every rule in FORMAT_SPEC
+cd packages/engine && npm test    # 64 — the state machine, every rule in FORMAT_SPEC
 cd packages/db     && npm test    # 21 — row-to-domain mapping
-cd packages/server && npm test    # 65 — API, projections, sockets, access, concurrency
+cd packages/server && npm test    # 66 — API, projections, sockets, access, concurrency
 cd packages/client && npm test    # 13 — the inline text formatter
 psql -d quizmaster -f packages/db/test/smoke.sql   # 35 — the schema enforces FORMAT_SPEC
 ```

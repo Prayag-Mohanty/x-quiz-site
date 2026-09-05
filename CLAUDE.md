@@ -74,11 +74,11 @@ packages/client/         Vite + React. Authoring, QM console, team client, score
 
 ## Current state
 
-**Phase 1 is built and tested, but has not yet run a real quiz** — which is the phase's own
-definition of done. Authoring, the QM console, the team client and the scoreboard all work
+**Phase 1 has run a real quiz** (2026-09-06, five teams, three rounds), which was the
+phase's own definition of done. Authoring, the QM console, the team client and the scoreboard all work
 end to end against a real database and real sockets.
 
-Tests, all passing: engine 60, db mapping 21, server 65, client 13, schema 35 SQL assertions.
+Tests, all passing: engine 64, db mapping 21, server 66, client 13, schema 35 SQL assertions.
 
 Two things to know before changing anything:
 

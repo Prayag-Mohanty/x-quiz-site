@@ -39,7 +39,11 @@ you still have Meet, and if Meet breaks you still have the engine. Do not skip t
 - [x] One port serving everything, so a tunnel exposes the whole app (`docs/RUNNING.md`)
 - [x] Access boundary: the authoring API is loopback-only until ADMIN_TOKEN is set
 
-**Done when:** you have hosted a real quiz on it. **Still outstanding.**
+- [x] Manual score adjustment, with a mandatory reason (§5.5)
+
+**Done when:** you have hosted a real quiz on it. **Done — 2026-09-06.** The action log
+of that quiz is what turned up the undo bug below; running it found in one evening what
+the test suite had not in a week.
 **Test this first:** kill wifi mid-pounce. It is the most likely live failure.
 
 ---

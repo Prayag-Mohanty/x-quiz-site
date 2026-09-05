@@ -666,3 +666,70 @@ test('a misclicked bounce can be stepped back, on every screen', async () => {
   qm.send({ type: 'ACTION', action: { type: 'BOUNCE_WRONG' } });
   await beta.waitFor<TeamView>((v) => v.bounce.onYou, 'Beta again');
 });
+
+/**
+ * A manual adjustment, live.
+ *
+ * FORMAT_SPEC §5.5. Applied rather than withheld, so unlike a partial it moves
+ * the public scoreboard the moment it is made — and it carries its reason all
+ * the way to the ledger row, where the post-quiz breakdown reads it back.
+ */
+test('the QM can adjust a score mid-quiz, with the reason recorded', async () => {
+  const { quiz, creds } = await fixture();
+  const qmJoin = await call('POST', '/api/join/qm', { qmToken: creds.qmToken });
+  const teamJoin = await call('POST', '/api/join', {
+    code: creds.teams[1].join_code,
+    displayName: 'Beta player',
+  });
+  const qm = new Client(`${base}/ws?token=${qmJoin.body.token}`, 'QM');
+  const beta = new Client(`${base}/ws?token=${teamJoin.body.token}`, 'Beta');
+  await Promise.all([qm.ready(), beta.ready()]);
+  await beta.waitFor<TeamView>((v) => v.role === 'TEAM', 'the team view');
+
+  qm.send({
+    type: 'ACTION',
+    action: {
+      type: 'MANUAL_ADJUST',
+      teamId: creds.teams[1].id,
+      points: -10,
+      note: 'Talking over the bounce',
+      eventId: '',
+    },
+  });
+
+  await beta.waitFor<TeamView>(
+    (v) => v.standings.find((s) => s.name === 'Beta')?.score === -10,
+    'the penalty on the public scoreboard',
+  );
+
+  const { rows } = await pool.query(
+    `SELECT points, reason, status, note FROM score_event
+      WHERE quiz_id = $1 AND reason = 'MANUAL_ADJUST'`,
+    [quiz.id],
+  );
+  assert.equal(rows.length, 1);
+  assert.deepEqual(
+    { points: rows[0].points, status: rows[0].status, note: rows[0].note },
+    { points: -10, status: 'APPLIED', note: 'Talking over the bounce' },
+  );
+
+  // No reason, no adjustment — the reducer refuses before the schema has to.
+  qm.send({
+    type: 'ACTION',
+    action: {
+      type: 'MANUAL_ADJUST',
+      teamId: creds.teams[1].id,
+      points: 5,
+      note: '  ',
+      eventId: '',
+    },
+  });
+  await new Promise((r) => setTimeout(r, 500));
+  assert.match(qm.errors().join(' '), /needs a reason/);
+
+  const after = await pool.query(
+    `SELECT count(*)::int AS n FROM score_event WHERE quiz_id = $1 AND reason = 'MANUAL_ADJUST'`,
+    [quiz.id],
+  );
+  assert.equal(after.rows[0].n, 1, 'the refused adjustment must not have been written');
+});
