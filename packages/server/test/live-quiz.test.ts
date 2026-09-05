@@ -733,3 +733,80 @@ test('the QM can adjust a score mid-quiz, with the reason recorded', async () =>
   );
   assert.equal(after.rows[0].n, 1, 'the refused adjustment must not have been written');
 });
+
+/**
+ * Leaving a question that is still in play, live.
+ *
+ * The engine test proves the state. This proves the room: the teams have to be
+ * told the question is gone, because they are looking at it.
+ */
+test('the QM can move to another question mid-question', async () => {
+  const quiz = (await call('POST', '/api/quizzes', { title: 'Mid-question Nav' })).body;
+  createdQuizzes.push(quiz.id);
+  for (const name of ['Alpha', 'Beta']) {
+    await call('POST', `/api/quizzes/${quiz.id}/teams`, { name });
+  }
+  const round = (
+    await call('POST', `/api/quizzes/${quiz.id}/rounds`, { type: 'DIRECT', title: 'R1' })
+  ).body;
+  const first = (await call('POST', `/api/rounds/${round.id}/questions`, { body: 'First.' })).body;
+  const second = (await call('POST', `/api/rounds/${round.id}/questions`, { body: 'Second.' })).body;
+  for (const q of [first, second]) {
+    await call('PATCH', `/api/questions/${q.id}`, { answer_text: 'An answer' });
+    await call('POST', `/api/questions/${q.id}/parts`, { label: 'Whole' });
+  }
+  const creds = (await call('GET', `/api/quizzes/${quiz.id}/credentials`)).body;
+
+  const qmJoin = await call('POST', '/api/join/qm', { qmToken: creds.qmToken });
+  const teamJoin = await call('POST', '/api/join', {
+    code: creds.teams[1].join_code,
+    displayName: 'Beta player',
+  });
+  const qm = new Client(`${base}/ws?token=${qmJoin.body.token}`, 'QM');
+  const beta = new Client(`${base}/ws?token=${teamJoin.body.token}`, 'Beta');
+  await Promise.all([qm.ready(), beta.ready()]);
+
+  // Get the first question properly under way, with something in the ledger.
+  qm.send({ type: 'ACTION', action: { type: 'PRESENT_QUESTION', questionId: first.id } });
+  qm.send({ type: 'ACTION', action: { type: 'OPEN_POUNCE' } });
+  await beta.waitFor<TeamView>((v) => v.pounce.open, 'the pounce window');
+  beta.send({ type: 'POUNCE', text: 'Beta guesses' });
+  await qm.waitFor<QmView>((v) => v.pounces.length === 1, 'the pounce');
+  qm.send({ type: 'ACTION', action: { type: 'CLOSE_POUNCE' } });
+  qm.send({
+    type: 'ACTION',
+    action: { type: 'EVALUATE_POUNCE', teamId: creds.teams[1].id, verdict: 'CORRECT', eventId: '' },
+  });
+
+  const scored = await qm.waitFor<QmView>(
+    (v) => v.standings.find((s) => s.name === 'Beta')?.provisionalScore === 10,
+    'the withheld award',
+  );
+  // The console warns with this number before the QM navigates away from it.
+  assert.equal(scored.withheldOnQuestion, 10);
+
+  // Wrong question was up. Move on without finishing it.
+  qm.send({ type: 'ACTION', action: { type: 'GO_TO_QUESTION', index: 1 } });
+
+  const moved = await qm.waitFor<QmView>((v) => v.phase === 'IDLE', 'the abandoned question');
+  assert.equal(moved.questionIdx, 1);
+  assert.equal(moved.nextQuestion?.id, second.id);
+  assert.equal(moved.withheldOnQuestion, 0, 'nothing is in play to withhold now');
+  assert.equal(qm.errors().length, 0, 'the engine did not refuse');
+
+  // The team is told the question is gone rather than left looking at it.
+  await beta.waitFor<TeamView>((v) => v.question === null, 'the question to clear');
+
+  // And the ledger is untouched: withheld stays withheld, not published, not
+  // dropped. It surfaces in the breakdown as recorded and never revealed.
+  const { rows } = await pool.query(
+    'SELECT status, points FROM score_event WHERE quiz_id = $1',
+    [quiz.id],
+  );
+  assert.deepEqual(rows, [{ status: 'PENDING', points: 10 }]);
+  assert.equal(
+    beta.latest<TeamView>()?.standings.find((s) => s.name === 'Beta')?.score,
+    0,
+    'a withheld award must not have become public by abandoning the question',
+  );
+});

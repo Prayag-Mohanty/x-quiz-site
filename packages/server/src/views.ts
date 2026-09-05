@@ -24,6 +24,7 @@
 
 import {
   bounceOrder,
+  partValue,
   publicScore,
   provisionalScore,
   standings,
@@ -477,16 +478,16 @@ export function buildQmView(state: QuizState, ctx: RoomContext): QmView {
         text: question.answerText,
         media: toViewMedia(question.answerMedia),
         notes: null,
-        parts: question.parts.map((part) => {
-          const evenSplit =
-            state.directScoring.questionValue / Math.max(question.parts.length, 1);
+        parts: question.parts.map((part, index) => {
           const creditedTeam =
             active?.kind === 'DIRECT' ? active.partsCredited[part.id] : undefined;
           return {
             id: part.id,
             label: part.label,
             canonicalAnswer: part.canonicalAnswer,
-            value: part.partialValue ?? evenSplit,
+            // The same integer split the reducer will score with, so the button
+            // never promises a number the award cannot be.
+            value: partValue(state.directScoring.questionValue, question.parts, index),
             creditedTo: creditedTeam ? teamName(creditedTeam) : null,
           };
         }),
@@ -579,6 +580,13 @@ export function buildQmView(state: QuizState, ctx: RoomContext): QmView {
     })),
 
     nextDirectTeamName: state.teams[state.nextDirectTeamIdx]?.name ?? null,
+
+    withheldOnQuestion:
+      active && active.kind !== 'WRITTEN'
+        ? state.ledger
+            .filter((e) => e.questionId === active.questionId && e.status === 'PENDING')
+            .reduce((sum, e) => sum + e.points, 0)
+        : 0,
   };
 }
 

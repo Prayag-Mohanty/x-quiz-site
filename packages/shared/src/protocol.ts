@@ -350,6 +350,18 @@ export interface QmView {
 
   /** Which team the next direct question goes to, under the current rotation. */
   nextDirectTeamName: string | null;
+
+  /**
+   * Points recorded against the question in play and not yet published.
+   *
+   * Navigating away is legal mid-question and does not touch the ledger, so a
+   * withheld award on the question being left never gets published — it just
+   * sits there, and turns up in the post-quiz breakdown as points recorded and
+   * never revealed. The console warns before that happens rather than after.
+   *
+   * Zero when nothing is withheld, or when no question is in play.
+   */
+  withheldOnQuestion: number;
 }
 
 /**

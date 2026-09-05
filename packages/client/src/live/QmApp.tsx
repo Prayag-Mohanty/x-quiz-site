@@ -453,9 +453,15 @@ function Console({
  * awarded stay awarded, and undo is how you take one back.
  */
 function NavigationPanel({ view, act }: { view: QmView; act: (a: Action) => void }) {
-  // A REVEALED question or round is over — the engine allows navigating away
-  // from it, so the panel must too. This is what left the written round frozen.
-  const between = view.phase === 'IDLE' || view.phase === 'REVEALED';
+  /**
+   * Whether leaving would abandon a question in play.
+   *
+   * Navigating is legal either way — the usual reason to want it mid-question
+   * is that the wrong question is up. But it is worth SAYING, because leaving
+   * discards the pounces and the bounce position, and re-presenting starts the
+   * question clean. Labelled, not blocked.
+   */
+  const live = view.phase !== 'IDLE' && view.phase !== 'REVEALED';
   const roundIdx = view.round?.index ?? 0;
   // The real index, not one derived from nextQuestion — that is null once the
   // round is finished, and falling back to 0 would claim you are at the start.
@@ -467,15 +473,14 @@ function NavigationPanel({ view, act }: { view: QmView; act: (a: Action) => void
     <Panel
       title="Where you are"
       aside={
-        !between ? (
-          <span className="text-xs text-neutral-500">finish the question to move</span>
+        live ? (
+          <span className="text-xs text-neutral-500">a question is in play</span>
         ) : null
       }
     >
       <div className="flex flex-wrap items-center gap-2 text-sm">
         <span className="text-neutral-500">Round</span>
         <select
-          disabled={!between}
           value={roundIdx}
           onChange={(e) => act({ type: 'START_ROUND', roundIdx: Number(e.target.value) })}
           className="rounded border border-neutral-300 bg-white px-2 py-1 text-neutral-900 disabled:opacity-50"
@@ -489,7 +494,7 @@ function NavigationPanel({ view, act }: { view: QmView; act: (a: Action) => void
 
         <span className="ml-3 text-neutral-500">Question</span>
         <button
-          disabled={!between || questionIdx <= 0}
+          disabled={questionIdx <= 0}
           onClick={() => act({ type: 'GO_TO_QUESTION', index: questionIdx - 1 })}
           className="rounded border border-neutral-400 px-3 py-1 disabled:opacity-40"
         >
@@ -503,16 +508,32 @@ function NavigationPanel({ view, act }: { view: QmView; act: (a: Action) => void
               : `${questionIdx + 1} / ${questionCount}`}
         </span>
         <button
-          disabled={!between || questionIdx >= questionCount - 1}
+          disabled={questionIdx >= questionCount - 1}
           onClick={() => act({ type: 'GO_TO_QUESTION', index: questionIdx + 1 })}
           className="rounded border border-neutral-400 px-3 py-1 disabled:opacity-40"
         >
           Next →
         </button>
 
+        {live && (
+          <span className="ml-auto text-xs text-amber-700">
+            leaving abandons the question in play
+            {view.withheldOnQuestion !== 0 && (
+              <>
+                {' — '}
+                <strong>
+                  {view.withheldOnQuestion > 0 ? '+' : ''}
+                  {view.withheldOnQuestion} withheld
+                </strong>{' '}
+                would never be published
+              </>
+            )}
+          </span>
+        )}
+
         {/* Only a DIRECT round has a direct team. Showing it on a written or
             connect round states a fact that is not true of that round. */}
-        {view.nextDirectTeamName && between && view.round?.type === 'DIRECT' && (
+        {view.nextDirectTeamName && !live && view.round?.type === 'DIRECT' && (
           <span className="ml-auto text-xs text-neutral-500">
             next direct: <strong>{view.nextDirectTeamName}</strong>
           </span>

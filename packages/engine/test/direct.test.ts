@@ -1,9 +1,9 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { reduce } from '../src/reducer.js';
-import { publicScore, provisionalScore } from '../src/scoring.js';
+import { defaultPartValues, publicScore, provisionalScore } from '../src/scoring.js';
 import { eid, makeState, simpleQuestion, twoPartQuestion } from './helpers.js';
-import type { QuizState } from '../src/types.js';
+import type { QuizState, Round } from '../src/types.js';
 import type { Action } from '../src/actions.js';
 
 /** Apply a sequence of actions. */
@@ -570,4 +570,93 @@ test('voiding an already-voided event changes nothing', () => {
   s = reduce(s, { type: 'VOID_EVENT', eventId: 'ev-1' });
   assert.equal(JSON.stringify(s.ledger), once);
   assert.equal(s.ledger.length, 1);
+});
+
+/**
+ * The default part split has to be whole numbers.
+ *
+ * `score_event.points` is an integer column, so `value / parts.length` is a
+ * live failure waiting for the first question whose parts do not divide
+ * evenly. A three-part ten-point question produced 3.3333333333333335 and the
+ * insert was rejected mid-bounce, with a Postgres type error on the
+ * quizmaster's screen. Found by running the thing, not by the suite.
+ */
+describe('partial credit splits into whole points', () => {
+  const threeParts: Round[] = [
+    {
+      id: 'r1',
+      type: 'DIRECT',
+      title: 'R1',
+      direction: 'CW',
+      questions: [
+        {
+          id: 'q1',
+          text: 'Three parts',
+          media: [],
+          parts: [
+            { id: 'pA', label: 'A', canonicalAnswer: 'a' },
+            { id: 'pB', label: 'B', canonicalAnswer: 'b' },
+            { id: 'pC', label: 'C', canonicalAnswer: 'c' },
+          ],
+          answerText: 'a, b and c',
+          answerMedia: [],
+        },
+      ],
+    },
+  ];
+
+  test('an uneven split gives integers that still add up', () => {
+    // 10 across 3 is 4/3/3, not 3.33 each: no fractions, and nothing lost.
+    assert.deepEqual(defaultPartValues(10, 3), [4, 3, 3]);
+    assert.equal(defaultPartValues(10, 3).reduce((a, b) => a + b, 0), 10);
+
+    assert.deepEqual(defaultPartValues(10, 2), [5, 5]);
+    assert.deepEqual(defaultPartValues(10, 4), [3, 3, 2, 2]);
+    assert.deepEqual(defaultPartValues(10, 1), [10]);
+    assert.deepEqual(defaultPartValues(10, 0), []);
+  });
+
+  test('awarding one part of three is a whole number', () => {
+    let s = run(makeState({ teams: 4, nextDirectTeamIdx: 0, rounds: threeParts }), [
+      { type: 'PRESENT_QUESTION', questionId: 'q1' },
+      { type: 'OPEN_BOUNCE' },
+      { type: 'BOUNCE_PARTIAL', partIds: ['pB'], eventId: eid() },
+    ]);
+    const points = s.ledger[0]?.points ?? 0;
+    assert.equal(Number.isInteger(points), true, `awarded ${points}, which is not a whole number`);
+    assert.equal(points, 3);
+  });
+
+  test('awarding every part adds up to the question value', () => {
+    let s = run(makeState({ teams: 4, nextDirectTeamIdx: 0, rounds: threeParts }), [
+      { type: 'PRESENT_QUESTION', questionId: 'q1' },
+      { type: 'OPEN_BOUNCE' },
+      { type: 'BOUNCE_PARTIAL', partIds: ['pA', 'pB', 'pC'], eventId: eid() },
+    ]);
+    assert.equal(s.ledger[0]?.points, 10);
+  });
+
+  test('an authored value still wins over the split', () => {
+    const authored: Round[] = [
+      {
+        ...threeParts[0]!,
+        questions: [
+          {
+            ...threeParts[0]!.questions[0]!,
+            parts: [
+              { id: 'pA', label: 'A', canonicalAnswer: 'a', partialValue: 7 },
+              { id: 'pB', label: 'B', canonicalAnswer: 'b' },
+              { id: 'pC', label: 'C', canonicalAnswer: 'c' },
+            ],
+          },
+        ],
+      },
+    ];
+    const s = run(makeState({ teams: 4, nextDirectTeamIdx: 0, rounds: authored }), [
+      { type: 'PRESENT_QUESTION', questionId: 'q1' },
+      { type: 'OPEN_BOUNCE' },
+      { type: 'BOUNCE_PARTIAL', partIds: ['pA'], eventId: eid() },
+    ]);
+    assert.equal(s.ledger[0]?.points, 7);
+  });
 });

@@ -12,6 +12,7 @@
 
 import { type Action, IllegalTransition } from './actions.js';
 import { bounceOrder, nextDirectTeam, step } from './rotation.js';
+import { partValue } from './scoring.js';
 import type {
   ConnectQuestionState,
   Direction,
@@ -105,11 +106,6 @@ function nextBounceTeamIdx(
     if (!spent.has(id) && !active.bounceOffered.includes(id)) return idx;
   }
   return null;
-}
-
-/** Nothing in play, or the thing in play has been revealed and is over. */
-function isFinished(state: QuizState): boolean {
-  return state.active === null || state.active.phase === 'REVEALED';
 }
 
 function append(state: QuizState, event: ScoreEvent): ScoreEvent[] {
@@ -307,13 +303,14 @@ function reduceDirect(state: QuizState, action: Action): QuizState {
       const question = currentQuestion(state);
       const teamId = teamIdAt(state, active.bounceTeamIdx);
 
-      const defaultPer =
-        state.directScoring.questionValue / Math.max(question.parts.length, 1);
+      // Whole numbers only — score_event.points is an integer column, and an
+      // uneven split used to produce a fraction the insert rejected mid-bounce.
       const points =
         action.points ??
         action.partIds.reduce((sum, pid) => {
-          const part = question.parts.find((p) => p.id === pid);
-          return sum + (part?.partialValue ?? defaultPer);
+          const index = question.parts.findIndex((p) => p.id === pid);
+          if (index < 0) return sum;
+          return sum + partValue(state.directScoring.questionValue, question.parts, index);
         }, 0);
 
       const event: ScoreEvent = {
@@ -788,23 +785,34 @@ export function reduce(state: QuizState, action: Action): QuizState {
       };
     }
 
+    /** Same rule as GO_TO_QUESTION: legal mid-question, and the ledger is left alone. */
     case 'START_ROUND': {
-      // A REVEALED question or round is over; only an unfinished one blocks
-      // navigation. Without this a written round is a dead end: it ends at
-      // REVEALED with `active` still set, and every way out refuses.
-      if (!isFinished(state)) {
-        throw new IllegalTransition(action.type, 'a question is still active');
-      }
       if (action.roundIdx < 0 || action.roundIdx >= state.rounds.length) {
         throw new Error(`No round at index ${action.roundIdx}`);
       }
       return { ...state, roundIdx: action.roundIdx, questionIdx: 0, active: null };
     }
 
+    /**
+     * Move to another question, finished or not.
+     *
+     * Deliberately legal mid-question. The common reason to want it is that
+     * the wrong question is on screen, and being told "finish this one first"
+     * when the whole problem is that you did not mean to start it is the app
+     * arguing with the room.
+     *
+     * What it discards is the QUESTION state — pounces, bounce position, parts
+     * credited so far. What it does not touch is the LEDGER. Points already
+     * awarded stay awarded, because teams have already seen them; withheld
+     * ones stay withheld, because they were never published and abandoning a
+     * question is not a reveal. A withheld award left behind this way is
+     * visible in the post-quiz breakdown, which flags points recorded and
+     * never published.
+     *
+     * Presenting the same question again starts it clean, with the earlier
+     * awards still standing. Use VOID_EVENT if they should not.
+     */
     case 'GO_TO_QUESTION': {
-      if (!isFinished(state)) {
-        throw new IllegalTransition(action.type, 'a question is still active');
-      }
       const round = currentRound(state);
       if (action.index < 0 || action.index >= round.questions.length) {
         throw new Error(

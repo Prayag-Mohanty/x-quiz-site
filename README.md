@@ -242,9 +242,9 @@ the schema both insist on.
 ### Test suites
 
 ```
-cd packages/engine && npm test    # 64 — the state machine, every rule in FORMAT_SPEC
+cd packages/engine && npm test    # 70 — the state machine, every rule in FORMAT_SPEC
 cd packages/db     && npm test    # 21 — row-to-domain mapping
-cd packages/server && npm test    # 66 — API, projections, sockets, access, concurrency
+cd packages/server && npm test    # 67 — API, projections, sockets, access, concurrency
 cd packages/client && npm test    # 13 — the inline text formatter
 psql -d quizmaster -f packages/db/test/smoke.sql   # 35 — the schema enforces FORMAT_SPEC
 ```
