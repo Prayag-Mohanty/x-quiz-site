@@ -322,7 +322,59 @@ function ConnectionDot({ status }: { status: string }) {
  * in the round, which is the quizmaster's business rather than a fact the
  * question needs to state about itself.
  */
+/**
+ * Filling the screen with the question.
+ *
+ * Two mechanisms, because one of them is not available everywhere. The CSS
+ * overlay is the real feature — fixed to the viewport, bigger type, works in
+ * every browser including iOS Safari, which refuses requestFullscreen on
+ * anything that is not a video. The Fullscreen API is attempted on top of it
+ * where it exists, purely to hide the browser's own chrome; if it is refused
+ * the overlay is still exactly what the team asked for.
+ *
+ * Escape leaves, and so does the button, and the two stay in step: the browser
+ * fires its own exit on Escape when it took the request, so the state follows
+ * the document rather than assuming.
+ */
+function useFullscreen() {
+  const ref = useRef<HTMLDivElement>(null);
+  const [on, setOn] = useState(false);
+
+  useEffect(() => {
+    if (!on) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setOn(false);
+    };
+    // If the browser drops out of fullscreen by any route of its own, follow it.
+    const onChange = () => {
+      if (!document.fullscreenElement) setOn(false);
+    };
+    window.addEventListener('keydown', onKey);
+    document.addEventListener('fullscreenchange', onChange);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      document.removeEventListener('fullscreenchange', onChange);
+    };
+  }, [on]);
+
+  const enter = () => {
+    setOn(true);
+    // Best effort. Not supported on iOS Safari for a div, and refused if the
+    // click was not trusted; the overlay does the work either way.
+    void ref.current?.requestFullscreen?.().catch(() => undefined);
+  };
+
+  const exit = () => {
+    setOn(false);
+    if (document.fullscreenElement) void document.exitFullscreen().catch(() => undefined);
+  };
+
+  return { ref, on, enter, exit };
+}
+
 function QuestionCard({ view }: { view: TeamView }) {
+  const full = useFullscreen();
+
   if (!view.question) {
     return (
       <div className="font-question mb-3 overflow-hidden rounded-lg border border-neutral-200 bg-white">
@@ -336,33 +388,69 @@ function QuestionCard({ view }: { view: TeamView }) {
     );
   }
   return (
-    <div className="font-question mb-3 overflow-hidden rounded-lg border border-neutral-200 bg-white">
+    <div
+      ref={full.ref}
+      className={
+        full.on
+          ? 'font-question fixed inset-0 z-50 flex flex-col overflow-auto bg-white'
+          : 'font-question mb-3 overflow-hidden rounded-lg border border-neutral-200 bg-white'
+      }
+    >
       <div className={`${SLIDE_HEADER} flex items-baseline justify-between gap-3 px-5 py-4`}>
         <p className="text-2xl font-bold lg:text-3xl">{view.question.index + 1}.</p>
-        {/* A multi-part question is a fact about THIS question, so it stays.
-            The running count is not, so it went. */}
-        {view.question.partCount > 1 && (
-          <p className="text-xs tracking-wide text-white/70 uppercase">
-            {view.question.partCount} parts
-          </p>
+        <div className="flex items-baseline gap-4">
+          {/* A multi-part question is a fact about THIS question, so it stays.
+              The running count is not, so it went. */}
+          {view.question.partCount > 1 && (
+            <p className="text-xs tracking-wide text-white/70 uppercase">
+              {view.question.partCount} parts
+            </p>
+          )}
+          <button
+            onClick={full.on ? full.exit : full.enter}
+            className="rounded border border-white/40 px-2 py-1 text-xs text-white/90 hover:bg-white/10"
+            title={full.on ? 'Back to the rest of the screen — or press Escape' : 'Fill the screen with the question'}
+          >
+            {full.on ? 'Exit full screen' : 'Full screen'}
+          </button>
+        </div>
+      </div>
+      <div className={full.on ? 'flex-1 p-8 lg:p-16' : 'p-5 lg:p-8'}>
+        <p
+          className={
+            full.on
+              ? 'text-2xl leading-relaxed whitespace-pre-wrap lg:text-5xl lg:leading-relaxed'
+              : 'text-lg leading-relaxed whitespace-pre-wrap lg:text-2xl lg:leading-relaxed'
+          }
+        >
+          <Rich text={view.question.text} />
+          {/* Rendered as newlines rather than padding so it scales with the type:
+              two lines of 24px text is more room than two lines of 18px, which is
+              the point on a projector. */}
+          {LINE_BREAK.repeat(trailingLines(view.question.text))}
+        </p>
+        {view.question.media.map((m) =>
+          m.kind === 'IMAGE' ? (
+            <img
+              key={m.id}
+              src={m.url}
+              alt=""
+              className={full.on ? 'mt-6 max-h-[55vh] rounded' : 'mt-4 max-w-full rounded'}
+            />
+          ) : (
+            <audio key={m.id} src={m.url} controls className="mt-4 w-full" />
+          ),
         )}
       </div>
-      <div className="p-5 lg:p-8">
-      <p className="text-lg leading-relaxed whitespace-pre-wrap lg:text-2xl lg:leading-relaxed">
-        <Rich text={view.question.text} />
-        {/* Rendered as newlines rather than padding so it scales with the type:
-            two lines of 24px text is more room than two lines of 18px, which is
-            the point on a projector. */}
-        {LINE_BREAK.repeat(trailingLines(view.question.text))}
-      </p>
-      {view.question.media.map((m) =>
-        m.kind === 'IMAGE' ? (
-          <img key={m.id} src={m.url} alt="" className="mt-4 max-w-full rounded" />
-        ) : (
-          <audio key={m.id} src={m.url} controls className="mt-4 w-full" />
-        ),
+
+      {/* Full screen hides the pounce box, the scoreboard and everything else,
+          so say how to get back rather than leaving it to be discovered. */}
+      {full.on && (
+        <p className="px-8 pb-6 text-sm text-neutral-500 lg:px-16">
+          Press <kbd className="rounded border border-neutral-300 px-1">Esc</kbd> to get back
+          to your pounce box and the scoreboard.
+        </p>
       )}
-      </div>
     </div>
   );
 }

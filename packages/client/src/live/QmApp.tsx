@@ -333,7 +333,7 @@ function Console({
           </span>
         </div>
         <div className="flex items-center gap-3 text-xs text-neutral-500">
-          <span>{status}</span>
+          <ConnectionDot status={status} />
           {/* Opens with this console's own session, so the long token is not
               needed a second time. New tab: the quiz may still be running. */}
           <a
@@ -359,54 +359,42 @@ function Console({
         </div>
       )}
 
-      {/* The state bar. One obvious next step, and Space does it. */}
-      <div className="sticky top-0 z-10 flex flex-wrap items-center gap-2 border-b border-neutral-300 bg-neutral-50 px-4 py-3">
+      {/*
+        Where the quiz IS, and the one control that is not about the question in
+        front of you. The step that advances the quiz used to live here too and
+        has moved down beside the question — see ActionBar.
+      */}
+      <div className="sticky top-0 z-10 flex flex-wrap items-center gap-3 border-b border-neutral-300 bg-neutral-50 px-4 py-2">
         <span className="rounded bg-neutral-800 px-2 py-1 font-mono text-xs text-white">
           {view.phase}
         </span>
-        {primary && (
-          <button
-            onClick={() => act(primary.action)}
-            className="rounded bg-blue-700 px-4 py-2 font-semibold text-white"
-          >
-            {primary.label} <span className="ml-1 opacity-70">space</span>
-          </button>
-        )}
-        {view.phase === 'PRESENTED' && (
-          <button
-            onClick={() => act({ type: 'OPEN_BOUNCE' })}
-            className="rounded border border-neutral-400 px-3 py-2 text-sm"
-            title="Skip the pounce window entirely"
-          >
-            Skip pounce → bounce
-          </button>
-        )}
-        {/* During a bounce this lives beside Correct/Wrong, in BouncePanel. A
-            DEAD question has no bounce panel — the buttons there are all
-            illegal now — so the one case that has nowhere else to go stays
-            here, next to Reveal answer, which is the other thing you might
-            mean to press. */}
-        {canRewind && view.phase === 'DEAD' && (
-          <button
-            onClick={() => act({ type: 'REWIND_BOUNCE' })}
-            className="rounded border border-neutral-400 px-3 py-2 text-sm"
-            title="Bring the question back to life on the last team. Points already awarded stay awarded."
-          >
-            Un-kill — back to {previousBounceTeam(view) ?? 'previous team'}{' '}
-            <span className="opacity-60">b</span>
-          </button>
-        )}
-        {/* Named, so you can see what you are taking back — and gone entirely
-            when there is nothing left to take back, rather than sitting there
-            looking pressable. */}
+
+        {/*
+          Undo, spelled out.
+          "Undo last" was a promise with no object — last what, this team, this
+          question, the round? It now names the award it will void: who, how
+          many points, and what for. It voids exactly that one ledger entry and
+          nothing else.
+        */}
         {undoTarget && (
           <button
             onClick={() => act({ type: 'VOID_EVENT', eventId: undoTarget.eventId })}
-            className="ml-auto rounded border border-neutral-400 px-3 py-2 text-sm"
-            title="Voids the award. The event stays in the ledger, marked undone."
+            className="ml-auto flex items-center rounded border border-neutral-400 px-3 py-1.5 text-sm"
+            title={
+              `Cancels this one award: ${undoTarget.teamName} ${undoTarget.points > 0 ? '+' : ''}` +
+              `${undoTarget.points} for ${reasonWords(undoTarget.reason)}. ` +
+              'The entry stays in the ledger marked undone; nothing else changes.'
+            }
           >
-            Undo {undoTarget.teamName} {undoTarget.points > 0 ? '+' : ''}
-            {undoTarget.points} <span className="opacity-60">u</span>
+            <span>
+              Undo <strong>{undoTarget.teamName}</strong>{' '}
+              <span className={undoTarget.points < 0 ? 'text-red-700' : 'text-green-700'}>
+                {undoTarget.points > 0 ? '+' : ''}
+                {undoTarget.points}
+              </span>{' '}
+              <span className="text-neutral-500">{reasonWords(undoTarget.reason)}</span>
+            </span>
+            <Key>u</Key>
           </button>
         )}
       </div>
@@ -418,12 +406,23 @@ function Console({
           <BounceOrder view={view} />
 
           {view.round?.type === 'WRITTEN' ? (
-            <WrittenPanel view={view} act={act} />
+            <>
+              <WrittenPanel view={view} act={act} />
+              <ActionBar view={view} act={act} primary={primary} canRewind={canRewind} />
+            </>
           ) : view.round?.type === 'VISUAL_CONNECT' ? (
-            <ConnectPanel view={view} act={act} />
+            <>
+              <ConnectPanel view={view} act={act} />
+              <ActionBar view={view} act={act} primary={primary} canRewind={canRewind} />
+            </>
           ) : (
             <>
               <QuestionPanel view={view} />
+              {/* Directly under the question, directly above Correct/Wrong.
+                  Present, reveal and next question used to be in the bar at the
+                  top of the page, so running a bounce meant looking up to
+                  advance and down to judge, on every single question. */}
+              <ActionBar view={view} act={act} primary={primary} canRewind={canRewind} />
               {view.phase === 'POUNCE_CLOSED' ||
               view.phase === 'POUNCE_OPEN' ||
               view.phase === 'POUNCE_FINAL_CALL' ? (
@@ -440,6 +439,73 @@ function Console({
           <PresencePanel view={view} />
         </div>
       </div>
+    </div>
+  );
+}
+
+/**
+ * The step that advances the quiz, where your eyes already are.
+ *
+ * This was a sticky bar at the top of the page. Judging a bounce is down here
+ * next to the question, so every question meant looking up to present, down to
+ * judge, up to reveal, down again — and the two most destructive keys in the
+ * console, y and n, are the ones you press without looking.
+ *
+ * Space still works from anywhere; this is about where the button IS.
+ */
+function ActionBar({
+  view,
+  act,
+  primary,
+  canRewind,
+}: {
+  view: QmView;
+  act: (a: Action) => void;
+  primary: { label: string; action: Action } | null;
+  canRewind: boolean;
+}) {
+  // Nothing to advance and nothing to skip: during a bounce the next step is a
+  // judgement, and an empty bar between the question and those buttons is just
+  // a gap to look past.
+  const skippable = view.phase === 'PRESENTED';
+  const unkillable = canRewind && view.phase === 'DEAD';
+  if (!primary && !skippable && !unkillable) return null;
+
+  return (
+    <div className="flex flex-wrap items-center gap-2 rounded border border-neutral-300 bg-white px-3 py-3">
+      {primary && (
+        <button
+          onClick={() => act(primary.action)}
+          className="flex items-center rounded bg-blue-700 px-5 py-2.5 font-semibold text-white"
+        >
+          {primary.label}
+          <Key>space</Key>
+        </button>
+      )}
+
+      {skippable && (
+        <button
+          onClick={() => act({ type: 'OPEN_BOUNCE' })}
+          className="rounded border border-neutral-400 px-3 py-2 text-sm"
+          title="Skip the pounce window entirely and put the question straight to the direct team"
+        >
+          Skip pounce → bounce
+        </button>
+      )}
+
+      {/* A dead question has no bounce panel — every button in it is illegal
+          now — so the un-kill sits here, next to Reveal answer, which is the
+          other thing you might have meant to press. */}
+      {unkillable && (
+        <button
+          onClick={() => act({ type: 'REWIND_BOUNCE' })}
+          className="flex items-center rounded border border-neutral-400 px-3 py-2 text-sm"
+          title="Bring the question back to life on the last team. Points already awarded stay awarded."
+        >
+          Un-kill — back to {previousBounceTeam(view) ?? 'previous team'}
+          <Key>b</Key>
+        </button>
+      )}
     </div>
   );
 }
@@ -541,6 +607,42 @@ function NavigationPanel({ view, act }: { view: QmView; act: (a: Action) => void
       </div>
     </Panel>
   );
+}
+
+/**
+ * A keyboard shortcut, as a key.
+ *
+ * It used to be a bare `<span>` after the label, which rendered as "Undo lastu"
+ * whenever the label ended without trailing whitespace of its own. A shortcut
+ * that looks like a typo in the button it belongs to is worse than no shortcut.
+ */
+function Key({ children }: { children: React.ReactNode }) {
+  return (
+    <kbd className="ml-2 rounded border border-current/30 px-1.5 py-0.5 font-sans text-[0.7rem] leading-none opacity-70">
+      {children}
+    </kbd>
+  );
+}
+
+/** live / reconnecting / offline, with the dot people actually read. */
+function ConnectionDot({ status }: { status: string }) {
+  const colour =
+    status === 'live'
+      ? 'bg-green-500'
+      : status === 'reconnecting'
+        ? 'bg-amber-500 animate-pulse'
+        : 'bg-red-500';
+  return (
+    <span className="inline-flex items-center gap-1.5 text-xs text-neutral-600">
+      <span className={`inline-block h-2 w-2 rounded-full ${colour}`} />
+      {status}
+    </span>
+  );
+}
+
+/** POUNCE_CORRECT -> "pounce correct". The ledger's word, in the QM's language. */
+function reasonWords(reason: string): string {
+  return reason.replace(/_/g, ' ').toLowerCase();
 }
 
 function Panel({ title, children, aside }: { title: string; children: React.ReactNode; aside?: React.ReactNode }) {
@@ -708,26 +810,26 @@ function BouncePanel({
       <div className="flex flex-wrap gap-2">
         <button
           onClick={() => act({ type: 'BOUNCE_CORRECT', eventId: '' })}
-          className="rounded bg-green-700 px-4 py-2 font-semibold text-white"
+          className="flex items-center rounded bg-green-700 px-4 py-2 font-semibold text-white"
         >
-          Correct +10 <span className="opacity-70">y</span>
+          Correct +10<Key>y</Key>
         </button>
         <button
           onClick={() => act({ type: 'BOUNCE_WRONG' })}
-          className="rounded border border-neutral-400 px-4 py-2"
+          className="flex items-center rounded border border-neutral-400 px-4 py-2"
         >
-          Wrong / pass <span className="opacity-60">n</span>
+          Wrong / pass<Key>n</Key>
         </button>
         {/* Beside the button that causes the mistake, because that is where you
             are already looking when you realise you made it. */}
         {canRewind && (
           <button
             onClick={() => act({ type: 'REWIND_BOUNCE' })}
-            className="rounded border border-neutral-400 px-4 py-2 text-neutral-700"
+            className="flex items-center rounded border border-neutral-400 px-4 py-2 text-neutral-700"
             title="Put the question back to the previous team. Points already awarded stay awarded."
           >
-            ← Back to {previousBounceTeam(view) ?? 'previous team'}{' '}
-            <span className="opacity-60">b</span>
+            ← Back to {previousBounceTeam(view) ?? 'previous team'}
+            <Key>b</Key>
           </button>
         )}
       </div>
