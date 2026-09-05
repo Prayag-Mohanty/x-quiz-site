@@ -672,7 +672,9 @@ function reduceWritten(state: QuizState, action: Action): QuizState {
           ? correct
             ? 'STAKE_CORRECT'
             : 'STAKE_WRONG'
-          : 'WRITTEN_CORRECT',
+          : correct
+            ? 'WRITTEN_CORRECT'
+            : 'WRITTEN_WRONG',
         status: 'APPLIED',
       };
 

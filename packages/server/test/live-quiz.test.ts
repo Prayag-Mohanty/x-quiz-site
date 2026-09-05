@@ -69,6 +69,12 @@ async function call(method: 'GET' | 'POST' | 'PATCH', url: string, payload?: unk
   return { status: res.statusCode, body: res.body ? JSON.parse(res.body) : null };
 }
 
+/** A GET with headers — the breakdown is behind the quizmaster's token. */
+async function getWith(url: string, headers: Record<string, string>) {
+  const res = await app.inject({ method: 'GET', url, headers });
+  return { status: res.statusCode, body: res.body ? JSON.parse(res.body) : null };
+}
+
 class Client {
   private received: ServerMessage[] = [];
   private listeners: (() => void)[] = [];
@@ -480,4 +486,138 @@ test('a team that reconnects mid-question rejoins the same room as everyone else
   // And the QM still sees exactly one pounce, not two.
   const qmView = await qm.waitFor<QmView>((v) => v.pounces.length === 1, 'still one pounce');
   assert.equal(qmView.pounces.length, 1);
+});
+
+// ─── The post-quiz breakdown ────────────────────────────────────────────────
+
+/**
+ * The report carries canonical answers and every team's private text, and the
+ * quiz id is not a secret — it is in the public scoreboard URL. So the token is
+ * the whole of the protection, and this is the test that says so.
+ */
+test('the breakdown refuses everyone but the quizmaster', async () => {
+  const { quiz, creds } = await fixture();
+  const url = `/api/quizzes/${quiz.id}/breakdown`;
+
+  assert.equal((await getWith(url, {})).status, 403, 'no token');
+  assert.equal((await getWith(url, { 'x-qm-token': 'not-the-token' })).status, 403);
+
+  // A team session is a valid session for this quiz and must still be refused —
+  // it is the case that would hand the answers to a player.
+  const teamJoin = await call('POST', '/api/join', {
+    code: creds.teams[0].join_code,
+    displayName: 'A player',
+  });
+  assert.equal((await getWith(url, { 'x-qm-token': teamJoin.body.token })).status, 403);
+
+  // A missing quiz answers exactly like a wrong token, so the response cannot
+  // be used to confirm which quiz ids exist.
+  const missing = await getWith('/api/quizzes/00000000-0000-0000-0000-000000000000/breakdown', {
+    'x-qm-token': creds.qmToken,
+  });
+  assert.equal(missing.status, 403);
+
+  // The quiz token opens it, and so does a live console session.
+  assert.equal((await getWith(url, { 'x-qm-token': creds.qmToken })).status, 200);
+  const qmJoin = await call('POST', '/api/join/qm', { qmToken: creds.qmToken });
+  assert.equal((await getWith(url, { 'x-qm-token': qmJoin.body.token })).status, 200);
+});
+
+test('the breakdown reports where every point came from, and what was written', async () => {
+  const quiz = (await call('POST', '/api/quizzes', { title: 'Breakdown Test' })).body;
+  createdQuizzes.push(quiz.id);
+  for (const name of ['Alpha', 'Beta']) {
+    await call('POST', `/api/quizzes/${quiz.id}/teams`, { name });
+  }
+  const round = (
+    await call('POST', `/api/quizzes/${quiz.id}/rounds`, { type: 'WRITTEN', title: 'W1' })
+  ).body;
+  const question = (
+    await call('POST', `/api/rounds/${round.id}/questions`, { body: 'Written one?' })
+  ).body;
+  await call('PATCH', `/api/questions/${question.id}`, { answer_text: 'The right answer' });
+  const creds = (await call('GET', `/api/quizzes/${quiz.id}/credentials`)).body;
+
+  const qmJoin = await call('POST', '/api/join/qm', { qmToken: creds.qmToken });
+  const alphaJoin = await call('POST', '/api/join', {
+    code: creds.teams[0].join_code,
+    displayName: 'Alpha player',
+  });
+  const qm = new Client(`${base}/ws?token=${qmJoin.body.token}`, 'QM');
+  const alpha = new Client(`${base}/ws?token=${alphaJoin.body.token}`, 'Alpha');
+  await Promise.all([qm.ready(), alpha.ready()]);
+
+  qm.send({ type: 'ACTION', action: { type: 'SHOW_WRITTEN_QUESTION', index: 0 } });
+  await alpha.waitFor<TeamView>((v) => v.written !== null, 'the written round');
+
+  alpha.send({
+    type: 'WRITTEN_ANSWER',
+    questionId: question.id,
+    text: 'Alpha wrote this, and staked it',
+    staked: true,
+  });
+  await qm.waitFor<QmView>(
+    (v) => (v.written?.answers.filter((a) => a.text !== null).length ?? 0) === 1,
+    'the sheet',
+  );
+
+  qm.send({ type: 'ACTION', action: { type: 'CLOSE_COLLECTION' } });
+  await qm.waitFor<QmView>((v) => v.written?.phase === 'EVALUATING', 'grading');
+  qm.send({
+    type: 'ACTION',
+    action: {
+      type: 'EVALUATE_WRITTEN',
+      teamId: creds.teams[0].id,
+      questionId: question.id,
+      verdict: 'CORRECT',
+      eventId: '',
+    },
+  });
+  await qm.waitFor<QmView>(
+    (v) => v.standings.find((s) => s.name === 'Alpha')?.provisionalScore === 15,
+    'the staked award',
+  );
+
+  const report = (
+    await getWith(`/api/quizzes/${quiz.id}/breakdown`, { 'x-qm-token': creds.qmToken })
+  ).body;
+
+  // Seat order, never score order: FORMAT_SPEC §3 leaves ranking to the QM, and
+  // a report that sorted by score would be making that call for them.
+  assert.deepEqual(report.standings.map((s: { name: string }) => s.name), ['Alpha', 'Beta']);
+
+  // A written award is APPLIED the moment it is judged, unlike a pounce: there
+  // is no bounce still running for a visible score to leak into (§2.2), so
+  // nothing is withheld and the report has nothing to warn about.
+  const alphaStanding = report.standings.find((s: { name: string }) => s.name === 'Alpha');
+  assert.equal(alphaStanding.score, 15);
+  assert.equal(alphaStanding.withheldPoints, 0);
+
+  assert.equal(report.events.length, 1);
+  assert.equal(report.events[0].points, 15);
+  assert.equal(report.events[0].reason, 'STAKE_CORRECT');
+  assert.equal(report.events[0].status, 'APPLIED');
+  assert.equal(report.events[0].roundTitle, 'W1');
+  assert.equal(report.events[0].questionIndex, 0);
+
+  // And what they actually wrote, with the canonical answer beside it.
+  assert.equal(report.submissions.length, 1);
+  assert.deepEqual(
+    {
+      team: report.submissions[0].teamName,
+      kind: report.submissions[0].kind,
+      staked: report.submissions[0].staked,
+      body: report.submissions[0].body,
+      verdict: report.submissions[0].verdict,
+      answer: report.submissions[0].answerText,
+    },
+    {
+      team: 'Alpha',
+      kind: 'WRITTEN',
+      staked: true,
+      body: 'Alpha wrote this, and staked it',
+      verdict: 'CORRECT',
+      answer: 'The right answer',
+    },
+  );
 });

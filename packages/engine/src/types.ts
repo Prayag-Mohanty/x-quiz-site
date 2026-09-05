@@ -146,6 +146,7 @@ export type ScoreReason =
   | 'BOUNCE_CORRECT'
   | 'PARTIAL'
   | 'WRITTEN_CORRECT'
+  | 'WRITTEN_WRONG'
   | 'STAKE_CORRECT'
   | 'STAKE_WRONG'
   | 'CONNECT_CORRECT'

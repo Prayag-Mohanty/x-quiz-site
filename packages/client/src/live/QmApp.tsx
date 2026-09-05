@@ -43,7 +43,16 @@ export function QmApp() {
   if (!view || view.role !== 'QM') {
     return <div className="p-8 text-center text-neutral-500">Connecting…</div>;
   }
-  return <Console view={view} onLeave={() => { clearSession(); setSession(null); }} />;
+  return (
+    <Console
+      view={view}
+      quizId={session.quizId}
+      onLeave={() => {
+        clearSession();
+        setSession(null);
+      }}
+    />
+  );
 }
 
 function QmJoin({ onJoined }: { onJoined: (s: StoredSession) => void }) {
@@ -225,7 +234,15 @@ function connectPrimaryAction(view: QmView): { label: string; action: Action } |
   }
 }
 
-function Console({ view, onLeave }: { view: QmView; onLeave: () => void }) {
+function Console({
+  view,
+  quizId,
+  onLeave,
+}: {
+  view: QmView;
+  quizId: string;
+  onLeave: () => void;
+}) {
   const send = useLive((s) => s.send);
   const status = useLive((s) => s.status);
   const error = useLive((s) => s.error);
@@ -271,6 +288,16 @@ function Console({ view, onLeave }: { view: QmView; onLeave: () => void }) {
         </div>
         <div className="flex items-center gap-3 text-xs text-neutral-500">
           <span>{status}</span>
+          {/* Opens with this console's own session, so the long token is not
+              needed a second time. New tab: the quiz may still be running. */}
+          <a
+            href={`/breakdown?quiz=${quizId}`}
+            target="_blank"
+            rel="noreferrer"
+            className="underline"
+          >
+            breakdown
+          </a>
           <button onClick={onLeave} className="underline">
             close
           </button>

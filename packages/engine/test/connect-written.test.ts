@@ -186,6 +186,18 @@ describe('WRITTEN round (FORMAT_SPEC §2.2)', () => {
     ]);
     assert.equal(publicScore(s.ledger, 't1'), 10);
     assert.equal(publicScore(s.ledger, 't2'), 0);
+
+    // A miss is worth nothing, which is why this went unnoticed: the reason has
+    // to say so anyway. The ledger is the audit trail and the post-quiz
+    // breakdown reads these out loud, so "WRITTEN_CORRECT, 0 points" is a lie
+    // about what the quizmaster decided.
+    assert.deepEqual(
+      s.ledger.map((e) => [e.teamId, e.reason, e.points]),
+      [
+        ['t1', 'WRITTEN_CORRECT', 10],
+        ['t2', 'WRITTEN_WRONG', 0],
+      ],
+    );
   });
 
   test('staked answers score +15 / -5', () => {
@@ -201,6 +213,10 @@ describe('WRITTEN round (FORMAT_SPEC §2.2)', () => {
     ]);
     assert.equal(publicScore(s.ledger, 't1'), 15);
     assert.equal(publicScore(s.ledger, 't2'), -5);
+    assert.deepEqual(
+      s.ledger.map((e) => e.reason),
+      ['STAKE_CORRECT', 'STAKE_WRONG'],
+    );
   });
 
   test('stakes lock at collection close', () => {

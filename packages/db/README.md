@@ -18,6 +18,7 @@ whatever it uses; the files are ordinary SQL and will not need rewriting.
 | `migrations/004_credential_defaults.sql` | Database defaults for those credentials |
 | `migrations/005_pouncers_may_bounce.sql` | Renames the rule flag once §5 question 1 was answered |
 | `migrations/006_withhold_pounce_awards.sql` | Lets a pounce award be withheld until the reveal |
+| `migrations/007_written_wrong_reason.sql` | Adds `WRITTEN_WRONG`, so a missed written answer is not logged as a correct one |
 | `src/rows.ts` | One interface per table, mirroring the SQL |
 | `src/map.ts` | Row-to-domain mapping — the only place snake_case becomes camelCase |
 

@@ -283,6 +283,20 @@ VALUES ('11111111-0000-0000-0000-000000000001', '22222222-0000-0000-0000-0000000
         '33333333-0000-0000-0000-000000000001', NULL, -10, 'MANUAL_ADJUST', 'APPLIED',
         'Talking over the bounce');
 
+-- §2.2 — a missed written answer is worth 0 by default, so the reason is the
+-- only record that it was judged at all. WRITTEN_WRONG has to be sayable, or the
+-- reducer has to label it WRITTEN_CORRECT, which is what it used to do (007).
+INSERT INTO score_event (quiz_id, team_id, round_id, question_id, points, reason, status)
+VALUES ('11111111-0000-0000-0000-000000000001', '22222222-0000-0000-0000-000000000004',
+        '33333333-0000-0000-0000-000000000001', '44444444-0000-0000-0000-000000000001',
+        0, 'WRITTEN_WRONG', 'APPLIED');
+
+SELECT assert_rejects($q$
+  INSERT INTO score_event (quiz_id, team_id, round_id, points, reason, status)
+  VALUES ('11111111-0000-0000-0000-000000000001', '22222222-0000-0000-0000-000000000004',
+          '33333333-0000-0000-0000-000000000001', 0, 'WRITTEN_NEARLY', 'APPLIED')
+$q$, 'the reason vocabulary is closed');
+
 -- Cross-quiz contamination is unrepresentable: the composite FKs pin a team and
 -- a round to the same quiz.
 INSERT INTO quiz (id, title) VALUES ('11111111-0000-0000-0000-0000000000ff', 'Another Quiz');

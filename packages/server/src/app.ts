@@ -16,6 +16,7 @@ import { describeDbError, pool } from './db.js';
 import { registerRoutes } from './routes.js';
 import { registerJoinRoutes } from './sessions.js';
 import { registerMediaRoutes, UPLOAD_DIR } from './media.js';
+import { registerBreakdownRoutes } from './breakdown.js';
 import { registerWebSocket } from './ws.js';
 
 export async function buildApp(
@@ -58,6 +59,7 @@ export async function buildApp(
   await registerRoutes(app);
   await registerJoinRoutes(app);
   await registerMediaRoutes(app);
+  await registerBreakdownRoutes(app);
   await registerWebSocket(app);
   return app;
 }

@@ -77,7 +77,7 @@ packages/client/         Vite + React. Authoring, QM console, team client, score
 definition of done. Authoring, the QM console, the team client and the scoreboard all work
 end to end against a real database and real sockets.
 
-Tests, all passing: engine 54, db mapping 21, server 59, schema 33 SQL assertions.
+Tests, all passing: engine 54, db mapping 21, server 61, schema 35 SQL assertions.
 
 Two things to know before changing anything:
 

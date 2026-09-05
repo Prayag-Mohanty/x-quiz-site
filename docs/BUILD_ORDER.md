@@ -76,7 +76,7 @@ Engine support already exists. This is UI.
 
 ## Phase 5 — Polish
 
-- [ ] Post-quiz breakdown export (per-team, from the ledger)
+- [x] Post-quiz breakdown export (per-team, from the ledger) — `/breakdown?quiz=…`, CSV
 - [ ] Scoreboard animation
 - [ ] QM audit log
 - [ ] Spectator/stream view
