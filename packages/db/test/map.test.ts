@@ -123,6 +123,11 @@ function assetRow(id: string, over: Partial<MediaAssetRow> = {}): MediaAssetRow 
     original_filename: null,
     content_type: null,
     checksum_sha256: null,
+    // Sealed preload (migrations/008). The mapper does not read these — the
+    // key never travels through the engine's domain types — but the row shape
+    // has to be honest about what the table holds.
+    preload_id: `${id}-preload`,
+    preload_key: null,
     transcode_status: 'READY',
     created_at: NOW,
     updated_at: NOW,

@@ -18,6 +18,8 @@
 import { useEffect, useRef, useState } from 'react';
 import type { ScoreboardView } from '@quizmaster/shared';
 
+import { MediaView } from './MediaView.js';
+import { clearPreloaded, preload } from './preload.js';
 import { Rich } from './Rich.js';
 import { trailingLines } from './trailing.js';
 import { socketUrl, useLive } from './socket.js';
@@ -64,6 +66,16 @@ export function ScoreboardApp() {
 function Board({ view, status }: { view: ScoreboardView; status: string }) {
   const page = useRef<HTMLDivElement>(null);
   const [full, setFull] = useState(false);
+
+  // The projector holds the round's sealed media too — a screen in the room
+  // lagging a second behind the teams looking at it would be its own problem.
+  const roundId = view.round?.id ?? null;
+  const preloadCount = view.preload.length;
+  useEffect(() => {
+    void preload(view.preload);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [roundId, preloadCount]);
+  useEffect(() => () => clearPreloaded(), [roundId]);
 
   useEffect(() => {
     const onChange = () => setFull(Boolean(document.fullscreenElement));
@@ -140,13 +152,13 @@ function Slide({ view }: { view: ScoreboardView }) {
           <Rich text={view.question.text} />
           {LINE_BREAK.repeat(trailingLines(view.question.text))}
         </p>
-        {view.question.media.map((m) =>
-          m.kind === 'IMAGE' ? (
-            <img key={m.id} src={m.url} alt="" className="mt-6 max-h-[50vh] rounded" />
-          ) : (
-            <audio key={m.id} src={m.url} controls className="mt-4 w-full" />
-          ),
-        )}
+        {view.question.media.map((m) => (
+          <MediaView
+            key={m.id}
+            media={m}
+            className={m.kind === 'IMAGE' ? 'mt-6 max-h-[50vh] rounded' : 'mt-4 w-full'}
+          />
+        ))}
       </div>
     </div>
   );
@@ -228,11 +240,9 @@ function Answer({ view }: { view: ScoreboardView }) {
         <p className="text-2xl leading-relaxed whitespace-pre-wrap lg:text-4xl">
           <Rich text={view.reveal.text} />
         </p>
-        {view.reveal.media.map((m) =>
-          m.kind === 'IMAGE' ? (
-            <img key={m.id} src={m.url} alt="" className="mt-6 max-h-[40vh] rounded" />
-          ) : null,
-        )}
+        {view.reveal.media.map((m) => (
+          <MediaView key={m.id} media={m} className="mt-6 max-h-[40vh] rounded" />
+        ))}
       </div>
     </div>
   );

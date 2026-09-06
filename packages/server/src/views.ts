@@ -36,6 +36,7 @@ import {
 } from '@quizmaster/engine';
 import type {
   ConnectView,
+  SealedMedia,
   PublicQuestion,
   QmConnectView,
   QmWrittenView,
@@ -51,6 +52,14 @@ import type {
   ViewMedia,
 } from '@quizmaster/shared';
 
+/** What a sealed asset needs, keyed by media asset id. */
+export interface SealedAsset {
+  preloadId: string;
+  /** Base64 AES key, or null if the asset has not been sealed yet. */
+  key: string | null;
+  bytes: number | null;
+}
+
 /** Ephemeral per-room state that is not quiz state and never touches the reducer. */
 export interface RoomContext {
   quizTitle: string;
@@ -58,12 +67,67 @@ export interface RoomContext {
   presence: Map<TeamId, string[]>;
   /** teamId -> the shared answer draft. */
   drafts: Map<TeamId, TeamDraft>;
+  /** media asset id -> its sealed copy. Empty when nothing has been sealed. */
+  sealed: Map<string, SealedAsset>;
 }
 
 const EMPTY_DRAFT: TeamDraft = { text: '', updatedBy: null, typing: [] };
 
-function toViewMedia(media: readonly Media[]): ViewMedia[] {
-  return media.map((m) => ({ id: m.id, kind: m.kind, url: m.url }));
+/**
+ * Media a client may see NOW.
+ *
+ * Carries the sealed id and its key, so a client holding the ciphertext can
+ * decrypt what it already has instead of fetching. The key rides along with the
+ * plaintext URL and never ahead of it — this function is only ever called for
+ * media that is already being disclosed.
+ */
+function toViewMedia(media: readonly Media[], ctx?: RoomContext): ViewMedia[] {
+  return media.map((m) => {
+    const sealed = ctx?.sealed.get(m.id);
+    return {
+      id: m.id,
+      kind: m.kind,
+      url: m.url,
+      ...(sealed ? { preloadId: sealed.preloadId } : {}),
+      ...(sealed?.key ? { key: sealed.key } : {}),
+    };
+  });
+}
+
+/**
+ * Every asset in the current round, sealed.
+ *
+ * The whole round, including questions not yet asked, which is safe precisely
+ * because it is ciphertext and the keys are not here. A client fetches these
+ * once and holds them; the key for any one of them arrives only when its
+ * question is presented.
+ */
+function preloadList(state: QuizState, ctx: RoomContext): SealedMedia[] {
+  const round = currentRound(state);
+  if (!round) return [];
+
+  const seen = new Set<string>();
+  const list: SealedMedia[] = [];
+  for (const question of round.questions) {
+    for (const media of [
+      ...question.media,
+      ...question.answerMedia,
+      ...(question.revealSequence ?? []),
+    ]) {
+      const sealed = ctx.sealed.get(media.id);
+      // No sealed copy means no preload for that asset — the client falls back
+      // to fetching it when the question appears, which is what it did before
+      // any of this existed.
+      if (!sealed || seen.has(sealed.preloadId)) continue;
+      seen.add(sealed.preloadId);
+      list.push({
+        id: sealed.preloadId,
+        url: `/media/sealed/${sealed.preloadId}`,
+        bytes: sealed.bytes,
+      });
+    }
+  }
+  return list;
 }
 
 function currentRound(state: QuizState): Round | null {
@@ -102,7 +166,7 @@ function phaseOf(state: QuizState): TeamView['phase'] {
  * A question is only public once the QM has presented it. Before that the room
  * has not seen it, so neither has the wire.
  */
-function publicQuestion(state: QuizState): PublicQuestion | null {
+function publicQuestion(state: QuizState, ctx: RoomContext): PublicQuestion | null {
   const round = currentRound(state);
   const question = activeQuestion(state);
   if (!round || !question || !state.active) return null;
@@ -117,8 +181,8 @@ function publicQuestion(state: QuizState): PublicQuestion | null {
     // For a visual connect, only the stages revealed so far.
     media:
       state.active.kind === 'VISUAL_CONNECT'
-        ? toViewMedia((question.revealSequence ?? []).slice(0, state.active.stageIdx + 1))
-        : toViewMedia(question.media),
+        ? toViewMedia((question.revealSequence ?? []).slice(0, state.active.stageIdx + 1), ctx)
+        : toViewMedia(question.media, ctx),
     partCount: question.parts.length,
   };
 }
@@ -143,7 +207,7 @@ function publicQuestion(state: QuizState): PublicQuestion | null {
  * so unlike a DIRECT round there is no single "current" question — teams need
  * them all in front of them once collection opens.
  */
-function writtenQuestions(state: QuizState): PublicQuestion[] {
+function writtenQuestions(state: QuizState, ctx: RoomContext): PublicQuestion[] {
   const round = currentRound(state);
   if (!round) return [];
   return round.questions.map((q, i) => ({
@@ -151,12 +215,12 @@ function writtenQuestions(state: QuizState): PublicQuestion[] {
     index: i,
     total: round.questions.length,
     text: q.text,
-    media: toViewMedia(q.media),
+    media: toViewMedia(q.media, ctx),
     partCount: q.parts.length,
   }));
 }
 
-function buildTeamWritten(state: QuizState, teamId: TeamId): TeamWrittenView | null {
+function buildTeamWritten(state: QuizState, teamId: TeamId, ctx: RoomContext): TeamWrittenView | null {
   const active = state.active;
   if (!active || active.kind !== 'WRITTEN') return null;
   return {
@@ -165,11 +229,11 @@ function buildTeamWritten(state: QuizState, teamId: TeamId): TeamWrittenView | n
     // Before collection opens, only the question being shown is public.
     // Every question the QM has reached, so the answer boxes below can stay put
     // while the question above them changes.
-    questions: writtenQuestions(state).filter(
+    questions: writtenQuestions(state, ctx).filter(
       (q) => active.phase !== 'SHOWING' || q.index <= active.shownIdx,
     ),
     currentQuestion:
-      writtenQuestions(state).find((q) => q.index === active.shownIdx) ?? null,
+      writtenQuestions(state, ctx).find((q) => q.index === active.shownIdx) ?? null,
     collecting: active.phase === 'SHOWING' || active.phase === 'COLLECTING',
     // Own answers only. Another team's written answer is as private as a pounce.
     yourAnswers: active.answers
@@ -207,7 +271,7 @@ function buildConnect(state: QuizState): ConnectView | null {
   };
 }
 
-function buildQmConnect(state: QuizState): QmConnectView | null {
+function buildQmConnect(state: QuizState, ctx: RoomContext): QmConnectView | null {
   const base = buildConnect(state);
   const active = state.active;
   if (!base || !active || active.kind !== 'VISUAL_CONNECT') return null;
@@ -224,7 +288,7 @@ function buildQmConnect(state: QuizState): QmConnectView | null {
       const media = sequence[index];
       return {
         index,
-        media: media ? { id: media.id, kind: media.kind, url: media.url } : null,
+        media: media ? (toViewMedia([media], ctx)[0] ?? null) : null,
         shown: index <= active.stageIdx,
       };
     }),
@@ -239,7 +303,7 @@ function buildQmConnect(state: QuizState): QmConnectView | null {
   };
 }
 
-function buildQmWritten(state: QuizState): QmWrittenView | null {
+function buildQmWritten(state: QuizState, ctx: RoomContext): QmWrittenView | null {
   const active = state.active;
   if (!active || active.kind !== 'WRITTEN') return null;
   const round = currentRound(state);
@@ -273,7 +337,7 @@ function buildQmWritten(state: QuizState): QmWrittenView | null {
       id: q.id,
       index: i,
       text: q.text,
-      media: toViewMedia(q.media),
+      media: toViewMedia(q.media, ctx),
       answerText: q.answerText,
     })),
     answers,
@@ -383,7 +447,7 @@ export function buildTeamView(
     quizTitle: ctx.quizTitle,
     round: roundHeader(state),
     phase: phaseOf(state),
-    question: publicQuestion(state),
+    question: publicQuestion(state, ctx),
 
     you: {
       teamId: viewer.teamId,
@@ -441,12 +505,14 @@ export function buildTeamView(
     // The answer exists on the wire only after the QM reveals it.
     reveal:
       revealed && question
-        ? { text: question.answerText, media: toViewMedia(question.answerMedia) }
+        ? { text: question.answerText, media: toViewMedia(question.answerMedia, ctx) }
         : null,
 
-    written: buildTeamWritten(state, viewer.teamId),
+    written: buildTeamWritten(state, viewer.teamId, ctx),
 
     connect: buildConnect(state),
+
+    preload: preloadList(state, ctx),
   };
 }
 
@@ -476,7 +542,7 @@ export function buildQmView(state: QuizState, ctx: RoomContext): QmView {
   const answer: QmView['answer'] = question
     ? {
         text: question.answerText,
-        media: toViewMedia(question.answerMedia),
+        media: toViewMedia(question.answerMedia, ctx),
         notes: null,
         parts: question.parts.map((part, index) => {
           const creditedTeam =
@@ -525,7 +591,7 @@ export function buildQmView(state: QuizState, ctx: RoomContext): QmView {
     quizTitle: ctx.quizTitle,
     round: roundHeader(state),
     phase: phaseOf(state),
-    question: publicQuestion(state),
+    question: publicQuestion(state, ctx),
     answer,
     pounces,
     bounce: {
@@ -549,9 +615,9 @@ export function buildQmView(state: QuizState, ctx: RoomContext): QmView {
     recent,
     revealed: active?.phase === 'REVEALED',
 
-    written: buildQmWritten(state),
+    written: buildQmWritten(state, ctx),
 
-    connect: buildQmConnect(state),
+    connect: buildQmConnect(state, ctx),
 
     // What to present next. Null while a question is still in play.
     nextQuestion:
@@ -607,10 +673,10 @@ export function buildScoreboardView(state: QuizState, ctx: RoomContext): Scorebo
     phase: phaseOf(state),
     // Exactly the team projection: presented questions only, and for a connect
     // only the reveals already shown. Nothing here that a team does not have.
-    question: publicQuestion(state),
+    question: publicQuestion(state, ctx),
     reveal:
       revealed && question
-        ? { text: question.answerText, media: toViewMedia(question.answerMedia) }
+        ? { text: question.answerText, media: toViewMedia(question.answerMedia, ctx) }
         : null,
     bounce: {
       active: bounceActive,
@@ -621,5 +687,6 @@ export function buildScoreboardView(state: QuizState, ctx: RoomContext): Scorebo
       order: bounceOrderFor(state),
     },
     connect: buildConnect(state),
+    preload: preloadList(state, ctx),
   };
 }

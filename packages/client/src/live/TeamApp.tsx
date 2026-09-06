@@ -19,6 +19,8 @@
 import { useEffect, useRef, useState } from 'react';
 import type { TeamView } from '@quizmaster/shared';
 
+import { MediaView } from './MediaView.js';
+import { clearPreloaded, preload } from './preload.js';
 import { Rich } from './Rich.js';
 import { trailingLines } from './trailing.js';
 import {
@@ -233,6 +235,22 @@ function TeamScreen({ view, onLeave }: { view: TeamView; onLeave: () => void }) 
   const status = useLive((s) => s.status);
   const error = useLive((s) => s.error);
 
+  /**
+   * Hold the round's media, sealed, before it is needed.
+   *
+   * Fetched as ciphertext the moment the list arrives, and unreadable until the
+   * quizmaster presents the question it belongs to. The list is keyed on the
+   * round so a new round drops the last one's bytes rather than accumulating
+   * every image in the quiz in a tab that may be open for hours.
+   */
+  const roundId = view.round?.id ?? null;
+  const preloadCount = view.preload.length;
+  useEffect(() => {
+    void preload(view.preload);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [roundId, preloadCount]);
+  useEffect(() => () => clearPreloaded(), [roundId]);
+
   return (
     <div className="mx-auto min-h-screen max-w-7xl bg-neutral-50 p-3 pb-24 lg:p-6">
       <header className="mb-3 flex items-baseline justify-between gap-2">
@@ -436,18 +454,19 @@ function QuestionCard({ view }: { view: TeamView }) {
               the point on a projector. */}
           {LINE_BREAK.repeat(trailingLines(view.question.text))}
         </p>
-        {view.question.media.map((m) =>
-          m.kind === 'IMAGE' ? (
-            <img
-              key={m.id}
-              src={m.url}
-              alt=""
-              className={full.on ? 'mt-6 max-h-[55vh] rounded' : 'mt-4 max-w-full rounded'}
-            />
-          ) : (
-            <audio key={m.id} src={m.url} controls className="mt-4 w-full" />
-          ),
-        )}
+        {view.question.media.map((m) => (
+          <MediaView
+            key={m.id}
+            media={m}
+            className={
+              m.kind === 'IMAGE'
+                ? full.on
+                  ? 'mt-6 max-h-[55vh] rounded'
+                  : 'mt-4 max-w-full rounded'
+                : 'mt-4 w-full'
+            }
+          />
+        ))}
       </div>
 
       {/* Full screen hides the pounce box, the scoreboard and everything else,
@@ -634,11 +653,9 @@ function RevealCard({ view }: { view: TeamView }) {
       <p className="text-lg leading-relaxed whitespace-pre-wrap lg:text-2xl lg:leading-relaxed">
         <Rich text={view.reveal.text} />
       </p>
-      {view.reveal.media.map((m) =>
-        m.kind === 'IMAGE' ? (
-          <img key={m.id} src={m.url} alt="" className="mt-4 max-w-full rounded" />
-        ) : null,
-      )}
+      {view.reveal.media.map((m) => (
+        <MediaView key={m.id} media={m} className="mt-4 max-w-full rounded" />
+      ))}
       </div>
     </div>
   );
@@ -840,11 +857,9 @@ function WrittenRound({ view }: { view: TeamView }) {
               <Rich text={written.currentQuestion.text} />
               {LINE_BREAK.repeat(trailingLines(written.currentQuestion.text))}
             </p>
-            {written.currentQuestion.media.map((m) =>
-              m.kind === 'IMAGE' ? (
-                <img key={m.id} src={m.url} alt="" className="mt-4 max-w-full rounded" />
-              ) : null,
-            )}
+            {written.currentQuestion.media.map((m) => (
+              <MediaView key={m.id} media={m} className="mt-4 max-w-full rounded" />
+            ))}
           </>
         ) : (
           <p className="text-sm text-neutral-500">Waiting for the quizmaster.</p>

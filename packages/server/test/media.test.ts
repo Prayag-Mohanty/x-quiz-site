@@ -9,13 +9,14 @@
 
 import { after, before, test } from 'node:test';
 import assert from 'node:assert/strict';
+import { createDecipheriv } from 'node:crypto';
 import { readdir, unlink } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { FastifyInstance } from 'fastify';
 
 import { buildApp } from '../src/app.js';
 import { pool } from '../src/db.js';
-import { UPLOAD_DIR } from '../src/media.js';
+import { UPLOAD_DIR } from '../src/uploads.js';
 
 let app: FastifyInstance;
 const createdQuizzes: string[] = [];
@@ -33,6 +34,10 @@ after(async () => {
       .catch(() => ({ rows: [] as { storage_key: string }[] }));
     for (const row of rows) {
       await unlink(join(UPLOAD_DIR, row.storage_key)).catch(() => undefined);
+      // Every uploaded asset is also sealed for preloading, which writes a
+      // second file beside it. Leaving those behind would slowly fill the
+      // uploads directory with ciphertext for quizzes that no longer exist.
+      await unlink(join(UPLOAD_DIR, `${row.storage_key}.sealed`)).catch(() => undefined);
     }
   }
   for (const id of createdQuizzes) {
@@ -89,6 +94,9 @@ async function upload(
   });
   return { status: res.statusCode, body: res.body ? JSON.parse(res.body) : null };
 }
+
+/** The common case: one PNG on a question, as a PROMPT. */
+const upload_ = (questionId: string) => upload(questionId, 'PROMPT', { filename: 'secret.png' });
 
 async function fixture(roundType: 'DIRECT' | 'VISUAL_CONNECT' = 'DIRECT') {
   const quiz = (await call('POST', '/api/quizzes', { title: 'Media Test' })).body;
@@ -248,4 +256,85 @@ test('a question with media loads as engine state with a playable URL', async ()
   assert.equal(media.length, 1);
   assert.equal(media[0].kind, 'IMAGE');
   assert.equal(media[0].url, `/media/${uploaded.body.asset.storage_key}`);
+});
+
+// ─── Sealed preload ─────────────────────────────────────────────────────────
+
+/**
+ * The bytes travel early, the key travels late.
+ *
+ * This is the property the whole feature rests on: a client may hold every
+ * image in the round before any of it is asked, and be unable to read a single
+ * one. If the sealed endpoint ever returned plaintext, preloading would hand a
+ * team the visual connect.
+ */
+test('the sealed copy is not the file, and the plain URL is not derivable from it', async () => {
+  const { question } = await fixture();
+  const upload = await upload_(question.id);
+  assert.equal(upload.status, 201);
+
+  const { rows } = await pool.query(
+    'SELECT id, storage_key, preload_id, preload_key FROM media_asset WHERE id = $1',
+    [upload.body.asset.id],
+  );
+  const asset = rows[0];
+
+  // Sealed on upload, so the views can hand a key out synchronously later.
+  assert.ok(asset.preload_key, 'the asset was not sealed on upload');
+  // The two identifiers are unrelated: holding one tells you nothing about the
+  // other, and the plaintext URL is an unguessable uuid.
+  assert.notEqual(asset.preload_id, asset.storage_key);
+  assert.equal(asset.storage_key.includes(asset.preload_id), false);
+
+  const sealed = await app.inject({ method: 'GET', url: `/media/sealed/${asset.preload_id}` });
+  assert.equal(sealed.statusCode, 200);
+  assert.equal(sealed.headers['content-type'], 'application/octet-stream');
+
+  const ciphertext = sealed.rawPayload;
+  // Longer than the original by the nonce and the tag, and nothing like it.
+  assert.equal(ciphertext.length, PNG.length + 12 + 16);
+  assert.equal(ciphertext.includes(PNG), false, 'the plaintext is inside the sealed file');
+  // Not even the PNG signature survives, which is the cheapest possible tell.
+  assert.equal(ciphertext.subarray(12, 20).equals(PNG.subarray(0, 8)), false);
+});
+
+test('the sealed bytes decrypt back to the original with the key, and not without it', async () => {
+  const { question } = await fixture();
+  const upload = await upload_(question.id);
+  const { rows } = await pool.query(
+    'SELECT preload_id, preload_key FROM media_asset WHERE id = $1',
+    [upload.body.asset.id],
+  );
+  const asset = rows[0];
+
+  const sealed = (
+    await app.inject({ method: 'GET', url: `/media/sealed/${asset.preload_id}` })
+  ).rawPayload;
+
+  // Exactly what the browser does: iv is the first 12 bytes, the tag is the
+  // last 16, and WebCrypto wants the tag left on the end of the ciphertext.
+  const key = Buffer.from(asset.preload_key, 'base64');
+  const iv = sealed.subarray(0, 12);
+  const body = sealed.subarray(12, sealed.length - 16);
+  const tag = sealed.subarray(sealed.length - 16);
+
+  const decipher = createDecipheriv('aes-256-gcm', key, iv);
+  decipher.setAuthTag(tag);
+  const plain = Buffer.concat([decipher.update(body), decipher.final()]);
+  assert.deepEqual(plain, PNG, 'the sealed copy did not round trip');
+
+  // A different key must not open it. GCM authenticates, so this throws rather
+  // than quietly producing garbage — which is what makes the client's failure
+  // path a clean fallback instead of a broken image.
+  const wrong = createDecipheriv('aes-256-gcm', Buffer.alloc(32, 7), iv);
+  wrong.setAuthTag(tag);
+  assert.throws(() => Buffer.concat([wrong.update(body), wrong.final()]));
+});
+
+test('a sealed id that does not exist is a 404, not a hint', async () => {
+  const res = await app.inject({
+    method: 'GET',
+    url: '/media/sealed/00000000-0000-0000-0000-000000000000',
+  });
+  assert.equal(res.statusCode, 404);
 });

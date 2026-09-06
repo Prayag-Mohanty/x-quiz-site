@@ -143,6 +143,10 @@ export interface MediaAssetRow {
   original_filename: string | null;
   content_type: string | null;
   checksum_sha256: string | null;
+  /** Public id for the SEALED copy — see migrations/008. */
+  preload_id: string;
+  /** Base64 AES-256-GCM key, or null until the asset has been sealed. */
+  preload_key: string | null;
   transcode_status: TranscodeStatus;
   created_at: Date;
   updated_at: Date;

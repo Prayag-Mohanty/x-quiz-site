@@ -24,8 +24,8 @@ import type { FastifyInstance } from 'fastify';
 import type { MediaAssetRow, QuestionMediaRow, QuestionRow } from '@quizmaster/db';
 
 import { maybeOne, one, query, transaction } from './db.js';
-
-export const UPLOAD_DIR = join(process.cwd(), 'uploads');
+import { sealAsset } from './sealed.js';
+import { UPLOAD_DIR } from './uploads.js';
 
 /** ARCHITECTURE §4: many images are fine, one video, and it bounds preload. */
 const LIMITS = {
@@ -142,6 +142,13 @@ export async function registerMediaRoutes(app: FastifyInstance): Promise<void> {
           );
           return { asset, link: rows[0] };
         });
+
+        // Seal it now, while the quiz is being written, so that by the time it
+        // is run every asset already has a key and the views can hand one out
+        // synchronously. A failure here costs the preload for this asset and
+        // nothing else — the client falls back to fetching it when the question
+        // appears, which is what it did before sealing existed.
+        await sealAsset(media.asset.id).catch(() => undefined);
 
         return reply.code(201).send(media);
       } catch (err) {

@@ -41,11 +41,40 @@ export interface PublicStanding {
   pouncesWrong: number;
 }
 
-/** Media a client may preload and play. */
+/** Media a client may play. */
 export interface ViewMedia {
   id: string;
   kind: 'IMAGE' | 'AUDIO' | 'VIDEO';
   url: string;
+  /**
+   * Which sealed copy in the preload cache this is, if it has one.
+   *
+   * Safe to send early — it addresses ciphertext. See `SealedMedia`.
+   */
+  preloadId?: string;
+  /**
+   * Base64 AES-256-GCM key for the sealed copy.
+   *
+   * Present ONLY when this media is already visible, which is to say at exactly
+   * the moment `url` is being sent anyway. The key is never earlier than the
+   * thing it unlocks, so it opens nothing a client was not already allowed to
+   * see — it only lets it be seen instantly, from bytes already held.
+   */
+  key?: string;
+}
+
+/**
+ * A sealed asset a client should fetch ahead of time.
+ *
+ * Ciphertext, addressed by an id unrelated to the plaintext URL. A client holds
+ * these for the whole round and can read none of them until the quizmaster
+ * presents the question they belong to.
+ */
+export interface SealedMedia {
+  id: string;
+  url: string;
+  /** So a client can skip what it already holds after a reconnect. */
+  bytes: number | null;
 }
 
 export interface RoundHeader {
@@ -198,6 +227,17 @@ export interface TeamView {
 
   /** Present only during a VISUAL_CONNECT round (FORMAT_SPEC §2.3). */
   connect: ConnectView | null;
+
+  /**
+   * Every asset in this round, sealed, to fetch now and hold.
+   *
+   * This is the whole round's media including questions not yet asked — which
+   * is only safe because it is ciphertext. Fetching it early is the point: when
+   * the question appears the bytes are already here, so it renders at the same
+   * instant for every team rather than a second apart, which matters while a
+   * pounce window is open.
+   */
+  preload: SealedMedia[];
 }
 
 /**
@@ -427,6 +467,8 @@ export interface ScoreboardView {
   };
   /** The decay ladder during a connect (§2.3), so the room can see what is at stake. */
   connect: ConnectView | null;
+  /** Same sealed preload the teams get — a projector should not lag them. */
+  preload: SealedMedia[];
 }
 
 export type View = TeamView | QmView | ScoreboardView;

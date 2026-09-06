@@ -236,10 +236,9 @@ No test had caught it. That is what running one is for.
 
 ### Left
 
-- **Phase 2 — media pipeline.** Object storage, a team-by-team "media loaded" grid, and
-  synced playback on a QM cue. Images are now downscaled in the browser before upload, so
-  a question image reaches a team in about a second through a tunnel rather than four.
-  Preload is deliberately NOT built — see below. Video is still untested.
+- **Phase 2 — media pipeline.** Object storage and a team-by-team "media loaded" grid.
+  Images are downscaled in the browser before upload, and preloaded to every client as
+  ciphertext that unlocks on the cue — see below. Video is still untested.
 - **Phase 3 — native video.** LiveKit, QM broadcast with selective unmute, team-private
   audio rooms, a video grid in the console. This is the part that removes the second
   browser window.
@@ -248,22 +247,33 @@ No test had caught it. That is what running one is for.
 - **Hosting.** Deliberately deferred until a real quiz has been run. A tunnel is the
   stand-in and it is enough.
 
-### Preload, and why it is not built
+### Preload: the bytes go early, the key goes late
 
-`ARCHITECTURE` calls for question media to be preloaded to clients and played on the QM's
-cue. It is not built, because preloading means sending a team the media of a question that
-has not been asked yet — and on a visual connect that is the whole round. Anything a
-browser has fetched is one click away in its network tab, so there is no version of this
-that is merely inconvenient to look at.
+`ARCHITECTURE` calls for question media to be on every client before the quizmaster cues
+it, so a picture appears at the same instant for everyone. Plain preloading cannot do
+that: anything a browser has fetched is one click away in its network tab, so handing a
+team the images of an unasked question hands them the question — and on a visual connect,
+the round.
 
-Measured through a Cloudflare tunnel, the cost of not preloading is about a second for a
-normal image and roughly four for an unoptimised 4MB one, of which ~0.7s is the round trip
-that no amount of preloading removes. Downscaling on upload takes most of the rest.
+So each asset is sealed with AES-256-GCM when it is uploaded, and served as ciphertext
+under a second identifier unrelated to its plaintext URL. Clients fetch the whole round's
+sealed media as soon as they join and can read none of it. The key travels in the same
+view update that presents the question — the moment the plaintext URL would have been sent
+anyway — and the client decrypts bytes it already holds.
 
-If the remaining second matters — it is a fairness question on a connect, since teams see
-the image at slightly different moments while a pounce window is open — the honest fix is
-to preload the bytes encrypted and release the key on the cue. That is real work and a
-real decision, not a default.
+Measured: a team that has been holding the ciphertext renders the image with **no network
+request at all** when the question appears, against roughly a second through a tunnel
+without it. That second is a fairness question rather than a comfort one, because it is a
+different second for each team while a pounce window is open.
+
+Every path fails soft. No WebCrypto, an unfinished fetch, a decrypt that throws, an asset
+uploaded before sealing existed — each falls back to the plain URL, which is what the app
+did before any of this. A slow question is a nuisance; a question that fails to appear
+because decryption was involved would be a disaster.
+
+The key sits in the same database as the ciphertext, and that is not an oversight. The
+threat is a player in a browser with dev tools, holding bytes they are not yet allowed to
+see — not someone who can read the quizmaster's database.
 
 ### Open rules
 
@@ -278,7 +288,7 @@ the schema both insist on.
 ```
 cd packages/engine && npm test    # 70 — the state machine, every rule in FORMAT_SPEC
 cd packages/db     && npm test    # 21 — row-to-domain mapping
-cd packages/server && npm test    # 73 — API, projections, sockets, access, concurrency
+cd packages/server && npm test    # 76 — API, projections, sockets, access, sealing
 cd packages/client && npm test    # 27 — text formatting, slide spacing, image sizing
 psql -d quizmaster -f packages/db/test/smoke.sql   # 35 — the schema enforces FORMAT_SPEC
 ```

@@ -18,8 +18,10 @@ import fastifyStatic from '@fastify/static';
 import { describeDbError, pool } from './db.js';
 import { registerRoutes } from './routes.js';
 import { registerJoinRoutes } from './sessions.js';
-import { registerMediaRoutes, UPLOAD_DIR } from './media.js';
+import { registerMediaRoutes } from './media.js';
+import { UPLOAD_DIR } from './uploads.js';
 import { registerBreakdownRoutes } from './breakdown.js';
+import { registerSealedRoutes } from './sealed.js';
 import { registerWebSocket } from './ws.js';
 import { registerAccessControl } from './access.js';
 
@@ -68,6 +70,7 @@ export async function buildApp(
   await registerJoinRoutes(app);
   await registerMediaRoutes(app);
   await registerBreakdownRoutes(app);
+  await registerSealedRoutes(app);
   await registerWebSocket(app);
   await registerClient(app);
   return app;

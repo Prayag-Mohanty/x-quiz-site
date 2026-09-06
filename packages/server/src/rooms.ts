@@ -148,6 +148,30 @@ async function loadRoom(quizId: string): Promise<Room> {
       quizTitle: load.quiz.title,
       presence: new Map(),
       drafts: new Map(),
+      // Sealed copies of this quiz's media, so the views can hand clients
+      // ciphertext to hold and a key only when the question is presented.
+      // Assets uploaded before sealing existed have no key and simply do not
+      // preload; the client fetches them the old way. See sealed.ts.
+      sealed: new Map(
+        (
+          await query<{
+            id: string;
+            preload_id: string;
+            preload_key: string | null;
+            size_bytes: string | null;
+          }>(
+            'SELECT id, preload_id, preload_key, size_bytes FROM media_asset WHERE quiz_id = $1',
+            [quizId],
+          )
+        ).map((a) => [
+          a.id,
+          {
+            preloadId: a.preload_id,
+            key: a.preload_key,
+            bytes: a.size_bytes === null ? null : Number(a.size_bytes),
+          },
+        ]),
+      ),
     },
     connections: new Map(),
     queue: Promise.resolve(),

@@ -52,7 +52,7 @@ the test suite had not in a week.
 
 - [ ] Object storage (R2) + signed URLs
 - [ ] Transcode uploads to one web rendition (H.264/AAC MP4, ≤1080p)
-- [ ] Client preload into Cache API / IndexedDB before each round
+- [x] Client preload before each round — sealed with AES-GCM, key released on the cue
 - [ ] QM readiness grid — team-by-team "media loaded ✓", with override
 - [ ] Synced play: QM cue + clock-offset handshake, clients play local copies
 - [ ] Auto-mute participant mics during media playback, restore after

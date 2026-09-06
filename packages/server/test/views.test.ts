@@ -79,6 +79,9 @@ const ctx: RoomContext = {
   quizTitle: 'Test Quiz',
   presence: new Map(),
   drafts: new Map(),
+  // No sealed copies: these fixtures have no real media behind them, which is
+  // also the fallback case — a client with nothing preloaded fetches as before.
+  sealed: new Map(),
 };
 
 function run(state: QuizState, actions: Action[]): QuizState {
@@ -306,6 +309,7 @@ test('a team sees who is here, across every team', () => {
       ['t2', ['Meera']],
     ]),
     drafts: new Map(),
+    sealed: new Map(),
   };
   const view = buildTeamView(baseState(), withPresence, {
     teamId: 't2',
