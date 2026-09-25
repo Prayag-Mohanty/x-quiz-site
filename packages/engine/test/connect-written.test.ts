@@ -82,6 +82,32 @@ describe('VISUAL_CONNECT (FORMAT_SPEC §2.3)', () => {
     );
   });
 
+  /**
+   * The refusal lands on a player's screen, so it is written for one.
+   *
+   * The server sends a rejected action's message straight to the client that
+   * caused it. This one used to interpolate the team id, so a team that tried
+   * to pounce twice during a real run was shown a uuid mid-quiz.
+   */
+  test('a spent team is refused by name, not by id (§2.3)', () => {
+    let s = makeState({ teams: 6, rounds: [connectRound] });
+    s = run(s, [
+      { type: 'PRESENT_QUESTION', questionId: 'lvc1' },
+      { type: 'OPEN_POUNCE' },
+      { type: 'SUBMIT_POUNCE', teamId: 't1', text: 'wrong' },
+      { type: 'CLOSE_POUNCE' },
+      { type: 'EVALUATE_POUNCE', teamId: 't1', verdict: 'WRONG', eventId: eid() },
+      { type: 'FINISH_POUNCE_EVALUATION' },
+      { type: 'ADVANCE_REVEAL' },
+      { type: 'OPEN_POUNCE' },
+    ]);
+    assert.throws(
+      () => reduce(s, { type: 'SUBMIT_POUNCE', teamId: 't1', text: 'again' }),
+      (err: Error) => err.message.startsWith('Team 1 ') && !err.message.includes('t1'),
+      'the message should name the team the room knows',
+    );
+  });
+
   test('multiple teams may pounce at the same stage and all get that value', () => {
     let s = makeState({ teams: 6, rounds: [connectRound] });
     s = run(s, [

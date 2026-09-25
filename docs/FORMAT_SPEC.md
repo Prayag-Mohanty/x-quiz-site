@@ -153,7 +153,11 @@ scored via a distinct ledger reason so they can be identified in the breakdown.
 
 ---
 
-## 5. Open questions (unresolved — confirm before relying on these)
+## 5. Open questions — none left
+
+All five are answered, dated, and implemented. They are kept rather than deleted because
+each answer is a rule, and the `RuleOptions` flag beside it is how the old behaviour comes
+back if one of these turns out to be wrong in front of a room.
 
 1. ~~May a team that pounced incorrectly still answer on bounce?~~
    **ANSWERED (2026-09-05): NO — and it applies to every pouncer, not just a wrong
@@ -163,7 +167,10 @@ scored via a distinct ledger reason so they can be identified in the breakdown.
 2. ~~May a team stake more than one of the four written-round answers?~~
    **ANSWERED (2026-09-06): YES.** A team may stake as many of its written answers as it
    likes. `RuleOptions.multipleStakesAllowed` stays `true`; set it false to restrict.
-3. Is written-round staking per-question or one stake for the whole round? *Assumed per-question.*
+3. ~~Is written-round staking per-question or one stake for the whole round?~~
+   **ANSWERED (2026-09-06): PER QUESTION.** Settled by the answer to 2 — a round-level
+   stake cannot be declared more than once, so "as many as it likes" only means anything
+   per question. A stake is declared with an answer and locks when the round closes.
 4. ~~After the final (4th) reveal of a long visual connect with no correct pounce, does the
    question simply die, or is there a bounce?~~
    **ANSWERED (2026-09-06): IT DIES.** There is no bounce anywhere in a connect. The last

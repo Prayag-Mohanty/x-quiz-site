@@ -56,6 +56,19 @@ function teamIdxOf(state: QuizState, teamId: TeamId): number {
   return idx;
 }
 
+/**
+ * A team's name, for a message somebody reads.
+ *
+ * Every error thrown in here ends up on a screen: the server sends the message
+ * straight to the client that caused it. A team told "Team dd7e5cb2-4c41-… has
+ * already pounced" has been shown a database id mid-quiz, which reads as a
+ * broken app rather than as the rule it is. Falls back to the id, because a
+ * message that throws while explaining a refusal is worse than an ugly one.
+ */
+function teamName(state: QuizState, teamId: TeamId): string {
+  return state.teams.find((t) => t.id === teamId)?.name ?? teamId;
+}
+
 function requireDirect(state: QuizState): DirectQuestionState {
   if (!state.active || state.active.kind !== 'DIRECT') {
     throw new Error('No active DIRECT question');
@@ -204,7 +217,7 @@ function reduceDirect(state: QuizState, action: Action): QuizState {
         throw new IllegalTransition(action.type, active.phase);
       }
       const pounce = active.pounces.find((p) => p.teamId === action.teamId);
-      if (!pounce) throw new Error(`No pounce from team ${action.teamId}`);
+      if (!pounce) throw new Error(`${teamName(state, action.teamId)} did not pounce on this question`);
 
       const correct = action.verdict === 'CORRECT';
       const event: ScoreEvent = {
@@ -495,7 +508,7 @@ function reduceConnect(state: QuizState, action: Action): QuizState {
       }
       // One pounce per team per QUESTION, not per stage (§2.3).
       if (active.spentTeams.includes(action.teamId)) {
-        throw new Error(`Team ${action.teamId} has already pounced on this connect`);
+        throw new Error(`${teamName(state, action.teamId)} has already pounced on this connect`);
       }
       const others = active.pounces.filter((p) => p.teamId !== action.teamId);
       return {

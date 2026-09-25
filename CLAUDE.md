@@ -78,7 +78,7 @@ packages/client/         Vite + React. Authoring, QM console, team client, score
 phase's own definition of done. Authoring, the QM console, the team client and the scoreboard all work
 end to end against a real database and real sockets.
 
-Tests, all passing: engine 70, db mapping 21, server 89, client 69, schema 35 SQL assertions.
+Tests, all passing: engine 71, db mapping 21, server 89, client 69, schema 35 SQL assertions.
 
 Two things to know before changing anything:
 
@@ -90,7 +90,10 @@ Two things to know before changing anything:
   against the serialised bytes rather than object properties.
 
 All three round types now have a console and a team screen: DIRECT (§2.1), WRITTEN
-(§2.2) and VISUAL_CONNECT (§2.3). Media upload is done.
+(§2.2) and VISUAL_CONNECT (§2.3). Media upload is done, question media is preloaded to
+clients as ciphertext that unlocks on the QM's cue (`packages/server/src/sealed.ts`), and a
+question set can be imported by dropping a spreadsheet or a PDF on the authoring screen
+(`packages/client/src/import/`, `packages/server/src/fetchMedia.ts`).
 
 Not built: native video (Phase 3), and everything in Phase 5. See
 `docs/BUILD_ORDER.md`.

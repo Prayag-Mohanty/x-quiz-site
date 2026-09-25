@@ -132,6 +132,27 @@ from the same machine.
 
 ## Before the quiz starts
 
+**Play one first.** With the server up:
+
+```
+node scripts/dry-run.mjs
+```
+
+It writes a quiz called "Dry Run <date>", then plays three rounds through it as
+a quizmaster and five people on four teams, all connected at once — every round
+type, pounce, bounce, partial credit, a rewind, an undo, stakes, the decay
+ladder, a team whose socket dies mid-quiz — and checks the post-quiz report
+against the scores it expects. 82 checks; anything other than `0 failed` means
+do not run a quiz on this build tonight.
+
+It exercises what the test suites cannot: real sockets, five clients converging
+on one state, and the projections as bytes a real browser received. Add
+`ADMIN_TOKEN=…` if you have one set, and `BASE=https://….trycloudflare.com` to
+play it down the tunnel the teams will use, which is also how you find out what
+your tunnel does to a 4MB image. The quiz it makes is left in your list: a quiz
+with a score on it cannot be deleted through the API, because the ledger is
+append-only and a trigger says so.
+
 - **Postgres has to be running.** On this machine it is a Windows service
   (`QuizmasterPostgres`) and starts with the computer. `packages/db/README.md`
   covers registering one.

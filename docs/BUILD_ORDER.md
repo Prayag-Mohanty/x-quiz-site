@@ -18,6 +18,8 @@ Build it plain and ugly.
 - [x] Authoring API (`packages/server`) — quizzes, teams, rounds, questions, parts; 18 tests
 - [x] Question authoring UI: rounds, questions, parts, answers (`packages/client`)
 - [x] Media upload (local disk for Phase 0; R2 in Phase 2)
+- [x] Import an existing question set — TSV/CSV or PDF, dropped on the authoring screen,
+      with a review step before anything is written (`ARCHITECTURE` §10)
 - [x] Quiz setup: teams, round order, direction per round
 
 **Done when:** you can author a complete quiz and see it stored.

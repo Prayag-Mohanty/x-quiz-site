@@ -233,6 +233,41 @@ Constraint accepted: **one video per question, max.** Multiple images per questi
 web-friendly rendition (H.264/AAC MP4, capped at 1080p) on upload — do not serve whatever the
 QM uploaded.
 
+### What was actually built, and where it diverges
+
+The plan above was written before any of it existed. Three things are not as it describes,
+and this section is the record, because the plan is not the code:
+
+**Preloading is sealed, and the divergence is the point.** Step 1 above says clients cache
+the round's media and report readiness. They do — but a cache a browser has filled is one
+click away in its network tab, so handing a team the images of an unasked question hands
+them the question, and on a visual connect it hands them the round. So each asset is
+encrypted with AES-256-GCM when it is uploaded and served as ciphertext under a second
+identifier unrelated to its plaintext URL (`packages/server/src/sealed.ts`). Clients fetch
+the whole round's sealed media on joining and can read none of it. The key rides in the
+same view update that presents the question — the moment the plaintext URL would have been
+sent anyway — so the key is never earlier than the thing it unlocks. Measured on a real
+tunnel: a holding client renders with no network request at all, against roughly a second
+without it, and that second is a different second for each team while a pounce window is
+open. Every path falls back to the plain URL: no WebCrypto, an unfinished fetch, a decrypt
+that throws, an asset uploaded before sealing existed. A slow question is a nuisance; a
+question that fails to appear because encryption was involved would be a disaster.
+
+**Steps 2 and 3 are not built.** There is no readiness grid and no clock-offset handshake.
+The cue is the ordinary state broadcast, which for images is indistinguishable from a
+synchronised play, because the bytes are already local. Both matter for video and neither
+is needed before it. Step 4's mic ducking belongs to Phase 3 and the video call it ducks.
+
+**Fetching media by URL is a server fetching a URL somebody else chose.** The importer
+(§10) carries links rather than files, and a browser cannot read a cross-origin image as
+bytes, so the download happens server-side — which is the shape of every SSRF there has
+ever been. `packages/server/src/fetchMedia.ts` is mostly refusal: http and https only, the
+hostname is *resolved* and every address checked against loopback, the private blocks and
+the link-local range that carries cloud metadata, and redirects are followed by hand with
+every hop re-checked, because a check at the front door means nothing if the second hop is
+the one that goes somewhere internal. Size is counted while streaming, since content-length
+is a claim rather than a fact.
+
 ---
 
 ## 5. Real-time architecture
@@ -361,9 +396,52 @@ people at once and unfixable in the moment.
 
 ## 9. Open questions
 
-1. Can a wrong-pouncing team still answer on bounce? (Assumed yes.)
-2. Can a team stake more than one written-round answer?
-3. Does the written round allow per-question staking or one stake for the whole round?
-4. Long visual connect: is there a bounce at all after the final reveal, or does it simply die?
-5. Should the QM be able to award manual adjustments mid-quiz (e.g. penalty for a rules
-   violation)? The ledger supports it; the UI is a decision.
+**All five are answered.** `FORMAT_SPEC` §5 is the record, with the date and the reasoning
+on each; it is normative and this list is not. In short: a pouncer is out of the bounce
+whether it was right or wrong, a team may stake as many written answers as it likes,
+staking is per question, a connect dies after the final reveal rather than bouncing, and
+the QM may adjust any score at any time — with a reason, which the reducer and the schema
+both insist on.
+
+1. ~~Can a wrong-pouncing team still answer on bounce?~~ No, and nor can a right one.
+2. ~~Can a team stake more than one written-round answer?~~ Yes.
+3. ~~Per-question staking or one stake for the whole round?~~ Per question.
+4. ~~Long visual connect: a bounce after the final reveal, or does it die?~~ It dies.
+5. ~~Manual adjustments mid-quiz?~~ Yes, with a mandatory justification.
+
+---
+
+## 10. Importing an existing question set
+
+Added after the fact, and numbered last so nothing above renumbers. Phase-0 tooling by
+rights: a quiz that already exists as a spreadsheet or a PDF should not have to be retyped.
+
+**Everything is parsed in the browser.** The file is never uploaded to read it — a dropped
+document is read locally, and only the questions the quizmaster accepts are sent anywhere.
+`pdfjs-dist` is a dynamic import so that ~350KB of PDF machinery stays out of the bundle
+every team downloads to answer questions on a phone.
+
+Three readers, one intermediate shape (`packages/client/src/import/model.ts`), so the
+review screen and the writer do not care where the questions came from:
+
+| Source | How it is read |
+|---|---|
+| TSV / CSV | Columns matched by normalised name, not position. Quoting is RFC 4180 by hand, because a question containing a comma is ordinary and losing half of it would be silent. |
+| PDF question paper | Markers: `Round 1`, `Player 1 Question 2:`, `Answer:`. Prose under an answer becomes QM notes, not part of the answer — in the answer it would be on the reveal slide in front of everyone. |
+| PDF slide deck | One question per page, its answer on the next. The page is rendered and attached as a picture, because a slide's question *is* its picture. |
+
+**A review step, always.** Reading someone else's document is guesswork, and a quiz
+assembled from a bad guess is discovered in front of ten people. Every question is listed
+with the label it had in the source so the screen can be read against the document, rounds
+can be dropped, and the import button comes after.
+
+Two things learned from real files. A league spreadsheet that gives each player several
+questions in a row does not match this app's rotation, which moves the direct question on
+after every question — so the importer says so and leaves the choice alone rather than
+quietly reordering somebody's quiz. And page rendering hangs in a tab the browser is not
+painting, because `requestAnimationFrame` never fires there: it times out at 15 seconds,
+and the first timeout stops the rest, since the cause is the tab rather than the page.
+
+Media is allowed to fail. A dead link in a year-old sheet is normal; the question still
+imports and the failure is reported with the link in it, so one thing gets fixed rather
+than the whole import re-run.

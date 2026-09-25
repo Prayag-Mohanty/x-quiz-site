@@ -155,7 +155,7 @@ grid inside the console is Phase 3, alongside the SFU.
 ### `packages/engine` — the state machine
 
 Pure: no I/O, no clock, no randomness, no dependencies. Every transition is a function of
-the previous state and one explicit QM action. `npm test` runs 60 tests covering every rule
+the previous state and one explicit QM action. `npm test` runs 71 tests covering every rule
 in `FORMAT_SPEC`.
 
 ### `packages/db` — schema and mapping
@@ -172,17 +172,18 @@ inventing a second vocabulary for the network.
 ### `packages/server` — Fastify, Postgres, WebSockets
 
 The authoring API, the live room, and the socket layer. One quiz in flight is one room
-holding one `QuizState` in memory; Postgres is durability, not the live store. 65 tests,
+holding one `QuizState` in memory; Postgres is durability, not the live store. 89 tests,
 against a real database and real sockets, including the access boundary that keeps the
-answers behind the quizmaster's token.
+answers behind the quizmaster's token, the sealed preload, and the URL fetching the
+importer needs.
 
 ### `packages/client` — Vite + React
 
 All five screens in one bundle, and the server serves the build so everything is one
 origin on one port. The server is the source of truth; the client is a render cache. The
 team screen has two layouts: one column on a phone, question-plus-sidebar on a desktop.
-18 tests on the inline text formatter and the slide spacing. Inter is bundled from npm
-rather than fetched from a CDN, so a question never renders in a fallback face because
+69 tests on the inline text formatter, the slide spacing, image sizing and the two
+importers. Inter is bundled from npm rather than fetched from a CDN, so a question never renders in a fallback face because
 someone's DNS was slow mid-quiz.
 
 ---
@@ -287,12 +288,18 @@ the schema both insist on.
 ### Test suites
 
 ```
-cd packages/engine && npm test    # 70 — the state machine, every rule in FORMAT_SPEC
+cd packages/engine && npm test    # 71 — the state machine, every rule in FORMAT_SPEC
 cd packages/db     && npm test    # 21 — row-to-domain mapping
 cd packages/server && npm test    # 89 — API, projections, sockets, access, sealing, URL fetching
 cd packages/client && npm test    # 69 — text formatting, slide spacing, image sizing, importers
 psql -d quizmaster -f packages/db/test/smoke.sql   # 35 — the schema enforces FORMAT_SPEC
+node scripts/dry-run.mjs           # 82 — a whole quiz, against the running server
 ```
+
+The last one is not a unit test and needs the server up. It plays three rounds
+as a quizmaster and five people on four teams at once, then checks the post-quiz
+report against the scores it expects — real HTTP, real sockets, real database.
+Run it before a quiz night; `docs/RUNNING.md` says what it covers.
 
 The server suite needs `DATABASE_URL` and runs against a real Postgres; it creates its own
 quizzes and deletes them afterwards, so it is safe against a database with real ones in it.
