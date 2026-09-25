@@ -18,6 +18,7 @@ import { QuestionEditor } from './components/QuestionEditor.js';
 import { RoundsPanel } from './components/RoundsPanel.js';
 import { RunPanel } from './components/RunPanel.js';
 import { TeamsPanel } from './components/TeamsPanel.js';
+import { ImportPanel } from './components/ImportPanel.js';
 import { AddForm, Button, EditableText, Panel } from './components/ui.js';
 
 export function App() {
@@ -55,8 +56,12 @@ export function App() {
       )}
 
       {!detail ? (
-        <div className="mx-auto max-w-md p-6">
+        // Nothing open: the two ways to start a quiz, side by side. Importing is
+        // the faster one when the questions already exist somewhere, which for
+        // a league they always do.
+        <div className="mx-auto grid max-w-3xl gap-4 p-6 md:grid-cols-2">
           <QuizListPanel standalone />
+          <ImportPanel />
         </div>
       ) : (
         <div

@@ -22,6 +22,7 @@ import { registerMediaRoutes } from './media.js';
 import { UPLOAD_DIR } from './uploads.js';
 import { registerBreakdownRoutes } from './breakdown.js';
 import { registerSealedRoutes } from './sealed.js';
+import { registerFetchMediaRoutes } from './fetchMedia.js';
 import { registerWebSocket } from './ws.js';
 import { registerAccessControl } from './access.js';
 
@@ -71,6 +72,7 @@ export async function buildApp(
   await registerMediaRoutes(app);
   await registerBreakdownRoutes(app);
   await registerSealedRoutes(app);
+  await registerFetchMediaRoutes(app);
   await registerWebSocket(app);
   await registerClient(app);
   return app;

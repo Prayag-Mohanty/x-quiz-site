@@ -165,6 +165,17 @@ export const api = {
   },
   deleteMedia: (linkId: string) => request<void>('DELETE', `/api/question-media/${linkId}`),
 
+  /**
+   * Attach a file the question set named by URL.
+   *
+   * The server downloads it, because a browser cannot read a cross-origin image
+   * as bytes. It refuses anything on this machine or a private network — see
+   * packages/server/src/fetchMedia.ts — and says why in a sentence this passes
+   * straight through to the import report.
+   */
+  attachMediaFromUrl: (questionId: string, role: string, url: string) =>
+    request<unknown>('POST', `/api/questions/${questionId}/media/from-url`, { url, role }),
+
   addPart: (questionId: string, label: string) =>
     request<QuestionPartRow>('POST', `/api/questions/${questionId}/parts`, { label }),
   updatePart: (id: string, patch: Record<string, unknown>) =>

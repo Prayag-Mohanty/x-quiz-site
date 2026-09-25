@@ -226,6 +226,7 @@ No test had caught it. That is what running one is for.
 | | |
 |---|---|
 | **Authoring** | Teams, rounds, question order, multi-part answers with point splits, images and audio, readiness checks. Inline `**bold**` / `*italic*` / `_underline_` on questions and answers. |
+| **Importing** | Drop a TSV/CSV or a PDF on the authoring screen. Spreadsheets are exact; PDFs are read either as a question paper (`Question 1:` / `Answer:`) or as a slide deck (one question per page, answer on the next). Everything goes through a review screen first, and images named by URL are fetched. |
 | **Direct rounds (§2.1)** | Written-blind pounce, infinite bounce with the order always on screen, partial credit recorded and withheld until the reveal, correct direct-team advancement. |
 | **Written rounds (§2.2)** | Questions read one at a time above a single answer sheet, per-question staking, a grading grid across every team. |
 | **Visual connect (§2.3)** | Staged reveals with the decay ladder on both screens, one pounce per team per connect, spent-team tracking. |
@@ -288,8 +289,8 @@ the schema both insist on.
 ```
 cd packages/engine && npm test    # 70 — the state machine, every rule in FORMAT_SPEC
 cd packages/db     && npm test    # 21 — row-to-domain mapping
-cd packages/server && npm test    # 76 — API, projections, sockets, access, sealing
-cd packages/client && npm test    # 27 — text formatting, slide spacing, image sizing
+cd packages/server && npm test    # 89 — API, projections, sockets, access, sealing, URL fetching
+cd packages/client && npm test    # 69 — text formatting, slide spacing, image sizing, importers
 psql -d quizmaster -f packages/db/test/smoke.sql   # 35 — the schema enforces FORMAT_SPEC
 ```
 
