@@ -176,12 +176,35 @@ class Client {
     return last ? JSON.parse(last).seq : -1;
   }
 
+  /**
+   * Wait until this client's CURRENT view satisfies `pred`.
+   *
+   * Only the latest view is tested, never the history: scanning back would
+   * happily match a state from before the thing being waited for.
+   *
+   * A predicate that THROWS counts as "not yet", not as a failure. Waiting for
+   * `v.written.answers` means waiting for `written` to exist at all, and over a
+   * tunnel a client can be several states behind — this ran clean on localhost
+   * for exactly that reason and fell over the first time it went through
+   * Cloudflare. The last exception is kept, so a genuine mistake in a predicate
+   * still surfaces when the wait times out instead of hiding as a timeout.
+   */
   async waitFor(pred, what) {
-    const deadline = Date.now() + 8000;
+    const deadline = Date.now() + 15_000;
+    let lastError = null;
     for (;;) {
       const current = this.view();
-      if (current && pred(current)) return current;
-      if (Date.now() > deadline) throw new Error(`${this.label}: timed out waiting for ${what}`);
+      try {
+        if (current && pred(current)) return current;
+      } catch (err) {
+        lastError = err;
+      }
+      if (Date.now() > deadline) {
+        throw new Error(
+          `${this.label}: timed out waiting for ${what}` +
+            (lastError ? ` — the check kept throwing: ${lastError.message}` : ''),
+        );
+      }
       await new Promise((resolve) => {
         const timer = setTimeout(resolve, 30);
         this.waiters.push(() => {
